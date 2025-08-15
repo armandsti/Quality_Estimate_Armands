@@ -1,8 +1,33 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
-import { QAError, Severity, ErrorCategory } from '../types';
-import { Request, Response } from 'express';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-const buildPrompt = (sourceText: string, targetText: string, glossaryText: string, referenceText: string, websiteText: string): string => {
+// Load environment variables
+dotenv.config({ path: '.env.local' });
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.static(join(__dirname, 'dist')));
+
+// API key is ONLY available here on the server - never exposed to frontend
+const apiKey = process.env.GEMINI_API_KEY;
+if (!apiKey) {
+  console.error('❌ GEMINI_API_KEY environment variable not set!');
+  process.exit(1);
+}
+
+// Build prompt function
+const buildPrompt = (sourceText, targetText, glossaryText, referenceText, websiteText) => {
   let prompt = `Analyze the following translation for quality assurance.
   
   **Source Text:**
@@ -52,10 +77,13 @@ const buildPrompt = (sourceText: string, targetText: string, glossaryText: strin
   The source text may contain segment identifiers like "[Segment 123]". If you find an error in a segment that has such an identifier, please capture the full identifier (e.g., "[Segment 123]") and return it in the 'segmentId' field. For the 'sourceSegment' field, return the segment text *without* this identifier.
 
   For \`sourceHighlight\`, \`targetHighlight\`, and \`suggestionHighlight\`, identify all relevant phrases. If there are multiple distinct phrases, combine them into a single string separated by the pipe character '|' (e.g., "error one|error two").
+
+  Return the response as a valid JSON array of objects with these fields: segmentId, sourceSegment, targetSegment, sourceHighlight, targetHighlight, errorCategory, errorType, description, suggestedCorrection, suggestionHighlight, severity.
   `;
   return prompt;
 };
 
+// Response schema for Gemini
 const responseSchema = {
   type: Type.ARRAY,
   items: {
@@ -84,7 +112,7 @@ const responseSchema = {
       errorCategory: {
         type: Type.STRING,
         description: "The main category of the error.",
-        enum: Object.values(ErrorCategory),
+        enum: ["Accuracy", "Completeness", "Consistency", "Fluency", "Style", "Terminology"],
       },
       errorType: {
         type: Type.STRING,
@@ -105,25 +133,16 @@ const responseSchema = {
       severity: {
         type: Type.STRING,
         description: "The severity of the error. Should be the most critical if multiple errors exist.",
-        enum: Object.values(Severity),
+        enum: ["Critical", "Major", "Minor"],
       },
     },
     required: ["sourceSegment", "targetSegment", "errorCategory", "errorType", "description", "suggestedCorrection", "severity"],
   },
 };
 
-export default async function handler(req: Request, res: Response) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
+// API routes
+app.post('/api/analyze', async (req, res) => {
   try {
-    // API key is ONLY available here on the server - never exposed to frontend
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'API key not configured on server' });
-    }
-
     const { sourceText, targetText, glossaryText, referenceText, websiteText } = req.body;
 
     if (!sourceText || !targetText) {
@@ -131,12 +150,11 @@ export default async function handler(req: Request, res: Response) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-
     const prompt = buildPrompt(sourceText, targetText, glossaryText, referenceText, websiteText);
 
     // Add retry logic for API calls
     const maxRetries = 3;
-    let lastError: Error | null = null;
+    let lastError = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -186,9 +204,66 @@ export default async function handler(req: Request, res: Response) {
     // If we get here, all retries failed
     throw new Error(`Gemini API request failed after ${maxRetries} attempts. Last error: ${lastError?.message || 'Unknown error'}`);
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Server error:', error);
     return res.status(500).json({ error: error.message || 'Analysis failed' });
   }
-}
+});
 
+app.post('/api/ocr', async (req, res) => {
+  try {
+    const { mime, base64 } = req.body;
+    
+    if (!mime || !base64) {
+      return res.status(400).json({ error: 'MIME type and base64 data are required' });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const imagePart = { inlineData: { data: base64, mimeType: mime } };
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { 
+        parts: [
+          imagePart, 
+          { text: "Extract all text from this image. Preserve line breaks and paragraph structure." }
+        ] 
+      },
+    });
+
+    if (response.promptFeedback && response.promptFeedback.blockReason) {
+      const blockReason = response.promptFeedback.blockReason;
+      const blockMessage = response.promptFeedback.blockReasonMessage || 'No additional details provided.';
+      throw new Error(`The image was blocked by the safety filter. Reason: ${blockReason}. Message: ${blockMessage}`);
+    }
+
+    if (!response.text) {
+      console.error("OCR Error: Gemini response did not contain text. Full response:", response);
+      throw new Error("Image text extraction failed: the model returned an empty response.");
+    }
+
+    return res.status(200).json({ text: response.text });
+
+  } catch (error) {
+    console.error('OCR server error:', error);
+    return res.status(500).json({ error: error.message || 'OCR failed' });
+  }
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', message: 'QA Riks API server is running' });
+});
+
+// Serve React app for any other routes
+app.get('*', (req, res) => {
+  res.sendFile(join(__dirname, 'dist', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 QA Riks API server running on http://localhost:${PORT}`);
+  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔑 Gemini API Key: ${process.env.GEMINI_API_KEY ? 'Configured' : 'Missing!'}`);
+});
+
+export default app;
