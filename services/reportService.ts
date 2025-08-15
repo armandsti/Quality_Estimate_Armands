@@ -202,18 +202,35 @@ export const exportToDocx = async (
 ) => {
     try {
         console.log(`Starting DOCX correction process for ${errorsToApply.length} corrections`);
-        console.log('Original file:', originalFile.name, 'Size:', originalFile.size);
+        console.log('Original file:', originalFile.name, 'Size:', originalFile.size, 'Type:', originalFile.type);
+        
+        // Validate file
+        if (originalFile.size === 0) {
+            throw new Error('File is empty');
+        }
+        
+        if (!originalFile.name.toLowerCase().endsWith('.docx')) {
+            throw new Error('File is not a .docx file');
+        }
         
         const zip = await JSZip.loadAsync(originalFile);
         console.log('Successfully loaded ZIP file');
         
+        // Check what files are in the ZIP
+        const zipFiles = Object.keys(zip.files);
+        console.log('ZIP contents:', zipFiles);
+        
         const docFile = zip.file('word/document.xml');
         if (!docFile) {
-            throw new Error('Invalid DOCX file: word/document.xml not found.');
+            throw new Error('Invalid DOCX file: word/document.xml not found. Available files: ' + zipFiles.join(', '));
         }
 
         let docXml = await docFile.async('string');
         console.log('Successfully extracted XML content, length:', docXml.length);
+        
+        if (docXml.length === 0) {
+            throw new Error('Document XML content is empty');
+        }
         
         // Sort errors by their ID to apply them in the order they appear in the document.
         const sortedErrors = [...errorsToApply].sort((a, b) => a.id - b.id);
@@ -342,12 +359,16 @@ export const exportToDocx = async (
         console.error('Full error object:', e);
         
         // Provide more helpful error messages
-        if (e.message.includes('Invalid DOCX file')) {
-            alert("The uploaded file is not a valid .docx file. Please check the file format.");
+        if (e.message.includes('File is empty')) {
+            alert("The uploaded file is empty. Please check the file and try again.");
+        } else if (e.message.includes('not a .docx file')) {
+            alert("The file is not a valid .docx file. Please upload a Word document.");
         } else if (e.message.includes('word/document.xml not found')) {
-            alert("The .docx file structure is invalid or corrupted.");
+            alert("The .docx file structure is invalid or corrupted. Please try a different file.");
+        } else if (e.message.includes('Document XML content is empty')) {
+            alert("The .docx file appears to be empty or corrupted. Please try a different file.");
         } else if (e.message.includes('ZIP')) {
-            alert("The file could not be opened as a ZIP archive. It may not be a valid .docx file.");
+            alert("The file could not be processed as a ZIP archive. It may not be a valid .docx file.");
         } else {
             alert(`Could not generate the corrected .docx file: ${e.message}`);
         }
