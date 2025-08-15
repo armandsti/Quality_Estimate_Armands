@@ -6,7 +6,7 @@ import { ResultsPage } from './components/ResultsPage';
 import { HistoryPage } from './components/HistoryPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { parseFile, parseBilingualFile } from './services/fileParserService';
-import { runQAAnalysis } from './services/geminiService';
+import { runQAAnalysis } from './services/aiService';
 import { exportToExcel, exportToDocx, exportToCorrectedBilingualFile } from './services/reportService';
 import { QAError, Severity, HistoryEntry } from './types';
 
@@ -158,11 +158,6 @@ export default function App() {
     
     if (targetText.trim().length < 10) {
       setApiError('Target text is too short. Please provide a document with more content.');
-      return;
-    }
-    
-    if (!process.env.GEMINI_API_KEY) {
-      setApiError('GEMINI_API_KEY environment variable not set. Please configure it to use the AI features.');
       return;
     }
     

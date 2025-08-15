@@ -144,11 +144,6 @@ export const UploadPage: React.FC<UploadPageProps> = ({
               {isLoading ? 'Analyzing...' : 'Run QA Analysis'}
             </button>
             {apiError && <p className="text-red-600 mt-4 text-center">{apiError}</p>}
-            {!process.env.API_KEY && (
-              <div className="mt-4 p-3 bg-yellow-100 border border-yellow-300 text-yellow-800 rounded-lg text-sm">
-                <strong>Note:</strong> The Gemini API key is not configured. The analysis feature is disabled.
-              </div>
-            )}
           </div>
         </div>
         

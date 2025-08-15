@@ -1,5 +1,5 @@
 import mammoth from 'mammoth';
-import { extractTextFromImage } from './geminiService';
+import { extractTextFromImage } from './aiService';
 
 // pdfjs-dist is loaded from a CDN in index.html, so we declare the global variable.
 declare const pdfjsLib: any;
