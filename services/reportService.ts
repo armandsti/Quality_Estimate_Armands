@@ -201,63 +201,155 @@ export const exportToDocx = async (
     originalFilename: string
 ) => {
     try {
+        console.log(`Starting DOCX correction process for ${errorsToApply.length} corrections`);
+        console.log('Original file:', originalFile.name, 'Size:', originalFile.size);
+        
         const zip = await JSZip.loadAsync(originalFile);
+        console.log('Successfully loaded ZIP file');
+        
         const docFile = zip.file('word/document.xml');
-
         if (!docFile) {
             throw new Error('Invalid DOCX file: word/document.xml not found.');
         }
 
         let docXml = await docFile.async('string');
+        console.log('Successfully extracted XML content, length:', docXml.length);
         
         // Sort errors by their ID to apply them in the order they appear in the document.
-        // This is a simple strategy to handle potentially overlapping corrections.
         const sortedErrors = [...errorsToApply].sort((a, b) => a.id - b.id);
 
+        let totalReplacements = 0;
+        
         for (const error of sortedErrors) {
-            // This is a "best-effort" replacement within the raw XML of the document.
-            // It preserves formatting of the overall document, but it has limitations:
-            // 1. It will not work if the `targetSegment` text is split across multiple XML tags 
-            //    (e.g., due to partial formatting like "some **bold** text").
-            // 2. It replaces only the first occurrence found in the XML from the top.
-            // Despite these limitations, it's a major improvement as it no longer destroys the document's formatting.
+            console.log(`\n--- Processing correction ${error.id} ---`);
+            console.log(`Target: "${error.targetSegment}"`);
+            console.log(`Correction: "${error.suggestedCorrection}"`);
             
-            const replacementText = escapeXml(error.suggestedCorrection);
-
-            // The text extracted from the DOCX (e.g., by mammoth.js) often normalizes various space characters
-            // (like non-breaking spaces, U+00A0) into regular spaces (U+0020).
-            // The original XML, however, retains the original characters.
-            // To successfully find and replace the text, we must try replacing both the regular-space
-            // version and a version with non-breaking spaces.
-
-            // Variant 1: Text with regular spaces (as it likely appears in `error.targetSegment`).
-            const sourceWithRegularSpaces = escapeXml(error.targetSegment);
+            // Try multiple approaches to find and replace the text
             
-            // Variant 2: Text with non-breaking spaces.
-            const sourceWithNbsp = escapeXml(error.targetSegment.replace(/ /g, String.fromCharCode(160)));
-
-            // A simple string replace is performed. It's not perfect but works for many cases.
-            // We try the regular space version first. If no replacement occurs, we try the non-breaking space version.
-            let tempXml = docXml.replace(sourceWithRegularSpaces, replacementText);
+            // Approach 1: Direct text replacement
+            let replacementMade = false;
             
-            if (tempXml === docXml) {
-                // The regular space version was not found, try the NBSP version.
-                tempXml = docXml.replace(sourceWithNbsp, replacementText);
+            if (docXml.includes(error.targetSegment)) {
+                console.log(`✅ Found exact match for: "${error.targetSegment}"`);
+                docXml = docXml.replace(error.targetSegment, error.suggestedCorrection);
+                replacementMade = true;
+                totalReplacements++;
+                console.log(`✅ Applied direct replacement`);
+            } else {
+                console.log(`❌ Exact text not found: "${error.targetSegment}"`);
+                
+                // Approach 2: Try with normalized spaces
+                const normalizedTarget = error.targetSegment.replace(/\s+/g, ' ');
+                if (docXml.includes(normalizedTarget)) {
+                    console.log(`✅ Found normalized match: "${normalizedTarget}"`);
+                    docXml = docXml.replace(normalizedTarget, error.suggestedCorrection);
+                    replacementMade = true;
+                    totalReplacements++;
+                    console.log(`✅ Applied normalized replacement`);
+                } else {
+                    console.log(`❌ Normalized text not found either`);
+                    
+                    // Approach 3: Try word-by-word replacement for longer phrases
+                    if (error.targetSegment.split(' ').length > 2) {
+                        console.log(`Trying word-by-word approach for longer phrase`);
+                        
+                        // Split into words and try to find consecutive words
+                        const words = error.targetSegment.split(/\s+/).filter(w => w.length > 0);
+                        console.log(`Words to find:`, words);
+                        
+                        // Look for consecutive word sequences
+                        for (let i = 0; i < words.length - 1; i++) {
+                            const wordPair = `${words[i]} ${words[i + 1]}`;
+                            if (docXml.includes(wordPair)) {
+                                console.log(`Found word pair: "${wordPair}"`);
+                                
+                                // Try to replace the full phrase around this pair
+                                const startIndex = docXml.indexOf(wordPair);
+                                const endIndex = startIndex + wordPair.length;
+                                
+                                // Look for the full phrase in a reasonable range
+                                const searchStart = Math.max(0, startIndex - 50);
+                                const searchEnd = Math.min(docXml.length, endIndex + 50);
+                                const searchRange = docXml.substring(searchStart, searchEnd);
+                                
+                                console.log(`Search range: "${searchRange}"`);
+                                
+                                // Try to find a close match in this range
+                                if (searchRange.includes(error.targetSegment.substring(0, Math.min(20, error.targetSegment.length)))) {
+                                    console.log(`Found partial match in search range`);
+                                    // Replace the full phrase
+                                    docXml = docXml.replace(error.targetSegment, error.suggestedCorrection);
+                                    replacementMade = true;
+                                    totalReplacements++;
+                                    console.log(`✅ Applied phrase replacement`);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
             }
             
-            docXml = tempXml;
+            if (!replacementMade) {
+                console.log(`❌ All replacement approaches failed for: "${error.targetSegment}"`);
+                
+                // Show what's actually in the XML around expected locations
+                console.log(`Debug: Looking for text in XML...`);
+                
+                // Search for key words that should be in the document
+                const keyWords = ['Zemgale', 'District', 'Court', 'Adgre', 'Hosea', 'Josh', 'Masih', 'Aaster'];
+                for (const word of keyWords) {
+                    const index = docXml.indexOf(word);
+                    if (index !== -1) {
+                        const start = Math.max(0, index - 100);
+                        const end = Math.min(docXml.length, index + 100);
+                        console.log(`Found "${word}" at position ${index}: "${docXml.substring(start, end)}"`);
+                    } else {
+                        console.log(`Word "${word}" not found in XML`);
+                    }
+                }
+            }
         }
+
+        console.log(`\n--- Summary ---`);
+        console.log(`Total replacements made: ${totalReplacements}`);
+        console.log(`Final XML length: ${docXml.length}`);
 
         // Update the zip with the modified XML
         zip.file('word/document.xml', docXml);
+        console.log('Updated ZIP file with modified XML');
 
-        const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-        const newFilename = originalFilename.startsWith('Reviewed_') ? originalFilename : `Reviewed_${originalFilename}`;
+        // Generate the new file
+        const blob = await zip.generateAsync({ 
+            type: 'blob', 
+            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+        });
+        console.log('Generated blob, size:', blob.size);
+        
+        const newFilename = originalFilename.startsWith('Reviewed_') ? 
+            originalFilename : `Reviewed_${originalFilename}`;
 
+        console.log(`📄 Saving corrected file as: ${newFilename}`);
         saveAs(blob, newFilename);
+        console.log('File saved successfully!');
 
     } catch (e) {
-        console.error("Error processing .docx file:", e);
-        alert("Could not generate the corrected .docx file. The file may be corrupt or a correction could not be applied without breaking the document structure.");
+        console.error('=== DOCX Processing Error ===');
+        console.error('Error type:', typeof e);
+        console.error('Error message:', e.message);
+        console.error('Error stack:', e.stack);
+        console.error('Full error object:', e);
+        
+        // Provide more helpful error messages
+        if (e.message.includes('Invalid DOCX file')) {
+            alert("The uploaded file is not a valid .docx file. Please check the file format.");
+        } else if (e.message.includes('word/document.xml not found')) {
+            alert("The .docx file structure is invalid or corrupted.");
+        } else if (e.message.includes('ZIP')) {
+            alert("The file could not be opened as a ZIP archive. It may not be a valid .docx file.");
+        } else {
+            alert(`Could not generate the corrected .docx file: ${e.message}`);
+        }
     }
 };
