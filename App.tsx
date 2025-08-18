@@ -79,6 +79,24 @@ function AppContent() {
     }
   }, [user, loading, navigate]);
 
+  // Immediate redirect for unauthenticated users
+  useEffect(() => {
+    const checkAuth = () => {
+      if (!loading && !user && window.location.pathname !== '/auth') {
+        console.log('🔍 DEBUG: Immediate redirect to /auth');
+        window.location.href = '/auth';
+      }
+    };
+    
+    // Check immediately
+    checkAuth();
+    
+    // Also check after a short delay to catch any race conditions
+    const timeoutId = setTimeout(checkAuth, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [user, loading]);
+
   // Reset redirecting state after navigation
   useEffect(() => {
     if (isRedirecting && window.location.pathname !== '/auth') {
