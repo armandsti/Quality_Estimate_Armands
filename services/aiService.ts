@@ -7,25 +7,48 @@ export async function runQAAnalysis(
   referenceText: string,
   websiteText: string
 ): Promise<QAError[]> {
-  // Frontend has NO API key - it just calls your secure server
-  const response = await fetch('/api/analyze', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourceText, targetText, glossaryText, referenceText, websiteText })
-  });
+  console.log('🔍 Starting QA Analysis...');
+  console.log('📝 Source text length:', sourceText.length);
+  console.log('📝 Target text length:', targetText.length);
+  
+  try {
+    // Frontend has NO API key - it just calls your secure server
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceText, targetText, glossaryText, referenceText, websiteText })
+    });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Analysis failed');
+    console.log('📡 API Response status:', response.status);
+    console.log('📡 API Response headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error Response:', errorText);
+      
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { error: errorText || `HTTP ${response.status}: ${response.statusText}` };
+      }
+      
+      throw new Error(errorData.error || `Analysis failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Analysis completed successfully, found', data.length, 'issues');
+    
+    return (data as any[]).map((error: any, index: number) => ({
+      ...error,
+      id: index,
+      resolved: false,
+      rejected: false
+    }));
+  } catch (error) {
+    console.error('🚨 Analysis error:', error);
+    throw error;
   }
-
-  const data = await response.json();
-  return (data as any[]).map((error: any, index: number) => ({
-    ...error,
-    id: index,
-    resolved: false,
-    rejected: false
-  }));
 }
 
 export async function extractTextFromImage(file: File): Promise<string> {

@@ -18,6 +18,14 @@ export default defineConfig({
       }
     }
   },
-  // Proxy removed for Vercel deployment - will use serverless functions
-  // API keys removed - will be handled securely via Vercel serverless functions
+  // Proxy for local development only
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  },
 });
