@@ -596,6 +596,10 @@ function AppContent() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
+        {/* VERSION INDICATOR */}
+        <div className="bg-blue-100 border-b-2 border-blue-400 p-2 text-center text-xs">
+          🚀 VERSION: 2024-12-19 16:00 UTC - Authentication fixes deployed - Commit: 42e2a4b
+        </div>
         {/* DEBUG INDICATOR */}
         <div className="bg-yellow-100 border-b-2 border-yellow-400 p-2 text-center text-sm">
           🔍 DEBUG: User: {user ? user.email : 'None'} | Loading: {loading.toString()} | Path: {window.location.pathname}
