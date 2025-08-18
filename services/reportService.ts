@@ -1,10 +1,7 @@
 import { QAError } from '../types';
 import saveAs from 'file-saver';
 import JSZip from 'jszip';
-
-
-// xlsx is loaded from a CDN in index.html
-declare const XLSX: any;
+import * as XLSX from 'xlsx';
 
 export const exportToExcel = (errors: QAError[]) => {
   if (!errors || errors.length === 0) {
@@ -13,6 +10,7 @@ export const exportToExcel = (errors: QAError[]) => {
   }
   
   try {
+    console.log('📊 Starting Excel export with', errors.length, 'errors');
     const worksheetData = errors.map(error => ({
       Severity: error.severity,
       Category: error.errorCategory,
@@ -61,10 +59,13 @@ export const exportToExcel = (errors: QAError[]) => {
     }
   }
   
+    console.log('📝 Writing Excel file...');
     XLSX.writeFile(workbook, 'Translation_QA_Report.xlsx');
+    console.log('✅ Excel export completed successfully');
   } catch (error) {
-    console.error('Error exporting to Excel:', error);
-    alert('Failed to export Excel file. Please try again.');
+    console.error('❌ Error exporting to Excel:', error);
+    console.error('Error details:', error instanceof Error ? error.message : String(error));
+    alert(`Failed to export Excel file: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
   }
 };
 
