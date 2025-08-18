@@ -144,14 +144,20 @@ module.exports = async function handler(req, res) {
     }
 
     // Initialize Gemini
-    const genAI = new GoogleGenAI(apiKey);
+    const genAI = new GoogleGenAI({ apiKey });
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Build the prompt
     const prompt = buildPrompt(sourceText, targetText, glossaryText, referenceText, websiteText);
 
     // Generate response with schema
-    const result = await model.generateContent([prompt, responseSchema]);
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: responseSchema
+      }
+    });
     const response = await result.response;
     const text = response.text();
 

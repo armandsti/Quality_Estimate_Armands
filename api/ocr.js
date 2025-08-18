@@ -32,7 +32,7 @@ module.exports = async function handler(req, res) {
     }
 
     // Initialize Gemini
-    const genAI = new GoogleGenAI(apiKey);
+    const genAI = new GoogleGenAI({ apiKey });
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Create the image part
@@ -47,7 +47,9 @@ module.exports = async function handler(req, res) {
     const prompt = `Please extract all the text from this image. Return only the extracted text, maintaining the original formatting and structure as much as possible. Do not add any explanations or additional text.`;
 
     // Generate response
-    const result = await model.generateContent([prompt, imagePart]);
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }, imagePart] }]
+    });
     const response = await result.response;
     const extractedText = response.text();
 
