@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+const { GoogleGenAI, Type } = require('@google/genai');
 
 // Build prompt function
 const buildPrompt = (sourceText, targetText, glossaryText, referenceText, websiteText) => {
@@ -112,7 +112,7 @@ const responseSchema = {
   },
 };
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
