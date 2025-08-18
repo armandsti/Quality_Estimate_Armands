@@ -14,7 +14,7 @@ interface ResultsPageProps {
   onBack: () => void;
   severityFilter: Severity[];
   onToggleSeverityFilter: (severity: Severity) => void;
-  onExportExcel: () => void;
+  onExportReport: () => void;
   onApplyCorrection: (errorId: number) => void;
   onRejectCorrection: (errorId: number) => void;
   onSuggestionEdit: (errorId: number, newSuggestion: string) => void;
@@ -35,7 +35,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
   onBack,
   severityFilter,
   onToggleSeverityFilter,
-  onExportExcel,
+  onExportReport,
   onApplyCorrection,
   onRejectCorrection,
   onSuggestionEdit,
@@ -156,8 +156,8 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
                 <button onClick={() => setIsShareModalOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg text-white bg-slate-600 hover:bg-slate-700 transition-colors">
                     <ShareIcon /> Share
                 </button>
-                <button onClick={onExportExcel} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg text-white bg-green-600 hover:bg-green-700 transition-colors">
-                    <ExcelIcon /> Report (.xlsx)
+                <button onClick={onExportReport} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg text-white bg-green-600 hover:bg-green-700 transition-colors">
+                    <ExcelIcon /> Report (.csv)
                 </button>
                 {canDownloadCorrected && (
                     <button onClick={onDownloadCorrected} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors">

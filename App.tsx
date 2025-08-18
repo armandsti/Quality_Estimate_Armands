@@ -497,7 +497,7 @@ function AppContent() {
                         onBack={handleStartNewAnalysis}
                         severityFilter={severityFilter}
                         onToggleSeverityFilter={handleToggleSeverityFilter}
-                        onExportExcel={() => exportToExcel(filteredErrors)}
+                        onExportReport={() => exportToExcel(filteredErrors)}
                         onApplyCorrection={handleApplyCorrection}
                         onRejectCorrection={handleRejectCorrection}
                         onSuggestionEdit={handleSuggestionEdit}
