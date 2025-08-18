@@ -600,6 +600,10 @@ function AppContent() {
         <div className="bg-yellow-100 border-b-2 border-yellow-400 p-2 text-center text-sm">
           🔍 DEBUG: User: {user ? user.email : 'None'} | Loading: {loading.toString()} | Path: {window.location.pathname}
         </div>
+        {/* ENVIRONMENT CHECK */}
+        <div className="bg-red-100 border-b-2 border-red-400 p-2 text-center text-xs">
+          🚨 ENV CHECK: Supabase URL: {import.meta.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing'} | Supabase Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'}
+        </div>
         <Header 
             wordsUsed={totalAnalyzedWords}
             onAnalyzeDocument={handleStartNewAnalysis}

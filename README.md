@@ -1,6 +1,6 @@
 # QA Riks - AI Translation Quality Assistant
 
-<!-- Force Vercel redeploy - Updated: $(date) -->
+<!-- Force Vercel redeploy - Updated: 2024-12-19 15:30 UTC -->
 
 ## Overview
 AI-powered translation quality assessment tool that analyzes source and target language files to identify translation errors, inconsistencies, and areas for improvement.
