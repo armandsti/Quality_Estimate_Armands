@@ -1,6 +1,9 @@
-# QA Riks - AI Translation Quality Assurance Tool
+# QA Riks - AI Translation Quality Assistant
 
-A modern web application for analyzing and quality-checking translated documents using AI-powered analysis.
+<!-- Force Vercel redeploy - Updated: $(date) -->
+
+## Overview
+AI-powered translation quality assessment tool that analyzes source and target language files to identify translation errors, inconsistencies, and areas for improvement.
 
 ## Features
 
