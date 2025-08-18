@@ -79,6 +79,30 @@ function AppContent() {
     }
   }, [user, loading, navigate]);
 
+  // Define loadHistoryFromDatabase function BEFORE using it
+  const loadHistoryFromDatabase = async () => {
+    if (!user) return;
+    
+    try {
+      const dbHistory = await HistoryService.getAnalysisHistory(user.id);
+      setHistory(dbHistory);
+    } catch (error) {
+      console.error('Failed to load history from database:', error);
+      // Fallback to localStorage if database fails
+      try {
+        const savedHistory = localStorage.getItem('translationHistory');
+        if (savedHistory) {
+          const parsed = JSON.parse(savedHistory);
+          if (Array.isArray(parsed)) {
+            setHistory(parsed);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load from localStorage:', e);
+      }
+    }
+  };
+
   // Load history from database when user is authenticated
   useEffect(() => {
     if (user) {
@@ -106,29 +130,6 @@ function AppContent() {
   }
 
   console.log('AppContent: User authenticated, rendering main app');
-
-  const loadHistoryFromDatabase = async () => {
-    if (!user) return;
-    
-    try {
-      const dbHistory = await HistoryService.getAnalysisHistory(user.id);
-      setHistory(dbHistory);
-    } catch (error) {
-      console.error('Failed to load history from database:', error);
-      // Fallback to localStorage if database fails
-      try {
-        const savedHistory = localStorage.getItem('translationHistory');
-        if (savedHistory) {
-          const parsed = JSON.parse(savedHistory);
-          if (Array.isArray(parsed)) {
-            setHistory(parsed);
-          }
-        }
-      } catch (e) {
-        console.error('Failed to load from localStorage:', e);
-      }
-    }
-  };
 
   useEffect(() => {
     localStorage.setItem('totalAnalyzedWords', totalAnalyzedWords.toString());
