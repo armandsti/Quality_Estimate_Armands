@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TranslayLogo, HistoryIcon, UserIcon, ChatBubbleIcon, AnalyzeIcon } from './Icons';
 import { Loader } from './Loader';
@@ -16,10 +16,27 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ wordsUsed, onAnalyzeDocument, onShowHistory, onShowInProcess, isProcessing }) => {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleSignOut = async () => {
     try {
       console.log('Header: Starting sign out process...');
+      setIsUserMenuOpen(false); // Close dropdown
       await signOut();
       console.log('Header: Sign out successful, redirecting to login...');
       // Redirect to login page after successful sign out
@@ -75,30 +92,35 @@ export const Header: React.FC<HeaderProps> = ({ wordsUsed, onAnalyzeDocument, on
              </button>
              
              {/* User Menu */}
-             <div className="relative group">
-               <button className="h-10 w-10 flex items-center justify-center rounded-full text-slate-600 bg-slate-200 hover:bg-slate-300 transition-colors">
+             <div className="relative">
+               <button 
+                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                 className="h-10 w-10 flex items-center justify-center rounded-full text-slate-600 bg-slate-200 hover:bg-slate-300 transition-colors"
+               >
                  <UserIcon />
                </button>
                
                {/* Dropdown Menu */}
-               <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                 <div className="py-3">
-                   <div className="px-4 py-3 border-b border-slate-100">
-                     <div className="text-sm font-semibold text-slate-900">
-                       {profile?.full_name || user?.email}
+               {isUserMenuOpen && (
+                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50" ref={userMenuRef}>
+                   <div className="py-3">
+                     <div className="px-4 py-3 border-b border-slate-100">
+                       <div className="text-sm font-semibold text-slate-900">
+                         {profile?.full_name || user?.email}
+                       </div>
+                       <div className="text-xs text-slate-500 mt-1">
+                         {user?.email}
+                       </div>
                      </div>
-                     <div className="text-xs text-slate-500 mt-1">
-                       {user?.email}
-                     </div>
+                     <button
+                       onClick={handleSignOut}
+                       className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors duration-200 rounded-lg mx-2"
+                     >
+                       Sign Out
+                     </button>
                    </div>
-                   <button
-                     onClick={handleSignOut}
-                     className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors duration-200 rounded-lg mx-2"
-                   >
-                     Sign Out
-                   </button>
                  </div>
-               </div>
+               )}
              </div>
           </div>
         </div>

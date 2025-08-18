@@ -25,6 +25,8 @@ function AppContent() {
   const navigate = useNavigate();
   const [isRedirecting, setIsRedirecting] = useState(false);
   
+  console.log('AppContent: Authentication state - user:', user, 'loading:', loading, 'pathname:', window.location.pathname);
+  
   // All state hooks must come first, before any conditional logic
   const [view, setView] = useState<'upload' | 'results' | 'history'>('upload');
   const [sourceFile, setSourceFile] = useState<File | null>(null);
@@ -612,6 +614,8 @@ function AuthWrapper() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
+  console.log('AuthWrapper: Authentication state - user:', user, 'loading:', loading);
+
   useEffect(() => {
     if (!loading && user) {
       console.log('AuthWrapper: User authenticated, redirecting to main app');
@@ -644,10 +648,10 @@ export default function App() {
         <Routes>
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/auth" element={<AuthWrapper />} />
+          <Route path="/" element={<AppContent />} />
           <Route path="/upload" element={<AppContent />} />
           <Route path="/results" element={<AppContent />} />
           <Route path="/history" element={<AppContent />} />
-          <Route path="/" element={<AppContent />} />
         </Routes>
       </Router>
     </AuthProvider>
