@@ -25,7 +25,9 @@ function AppContent() {
   const navigate = useNavigate();
   const [isRedirecting, setIsRedirecting] = useState(false);
   
-  console.log('AppContent: Authentication state - user:', user, 'loading:', loading, 'pathname:', window.location.pathname);
+  console.log('🔍 DEBUG: AppContent rendered - user =', user, 'loading =', loading, 'isRedirecting =', isRedirecting);
+  console.log('🔍 DEBUG: Current pathname =', window.location.pathname);
+  console.log('🔍 DEBUG: Authentication state - user:', user, 'loading:', loading);
   
   // All state hooks must come first, before any conditional logic
   const [view, setView] = useState<'upload' | 'results' | 'history'>('upload');
@@ -54,18 +56,26 @@ function AppContent() {
   
   // Redirect to auth if not authenticated
   useEffect(() => {
-    console.log('AppContent: useEffect triggered, user =', user, 'loading =', loading);
+    console.log('🔍 DEBUG: AppContent useEffect triggered, user =', user, 'loading =', loading);
     if (!loading && !user) {
-      console.log('AppContent: Redirecting to /auth');
+      console.log('🔍 DEBUG: AppContent: Redirecting to /auth');
       navigate('/auth');
     } else if (!loading && user) {
-      console.log('AppContent: User authenticated, should render main app');
+      console.log('🔍 DEBUG: AppContent: User authenticated, should render main app');
       // If we're on the auth page and user is authenticated, redirect to main app
       if (window.location.pathname === '/auth') {
-        console.log('AppContent: Redirecting from /auth to main app');
+        console.log('🔍 DEBUG: AppContent: Redirecting from /auth to main app');
         setIsRedirecting(true);
         navigate('/', { replace: true });
       }
+    }
+  }, [user, loading, navigate]);
+
+  // Force redirect if not authenticated and not loading
+  useEffect(() => {
+    if (!loading && !user && window.location.pathname !== '/auth') {
+      console.log('🔍 DEBUG: Force redirect to /auth - user not authenticated');
+      navigate('/auth', { replace: true });
     }
   }, [user, loading, navigate]);
 
@@ -594,6 +604,10 @@ function AppContent() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
+        {/* DEBUG INDICATOR */}
+        <div className="bg-yellow-100 border-b-2 border-yellow-400 p-2 text-center text-sm">
+          🔍 DEBUG: User: {user ? user.email : 'None'} | Loading: {loading.toString()} | Path: {window.location.pathname}
+        </div>
         <Header 
             wordsUsed={totalAnalyzedWords}
             onAnalyzeDocument={handleStartNewAnalysis}
@@ -614,16 +628,19 @@ function AuthWrapper() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  console.log('AuthWrapper: Authentication state - user:', user, 'loading:', loading);
+  console.log('🔍 DEBUG: AuthWrapper rendered - user:', user, 'loading:', loading);
+  console.log('🔍 DEBUG: AuthWrapper pathname =', window.location.pathname);
 
   useEffect(() => {
+    console.log('🔍 DEBUG: AuthWrapper useEffect triggered - user:', user, 'loading:', loading);
     if (!loading && user) {
-      console.log('AuthWrapper: User authenticated, redirecting to main app');
+      console.log('🔍 DEBUG: AuthWrapper: User authenticated, redirecting to main app');
       navigate('/', { replace: true });
     }
   }, [user, loading, navigate]);
 
   if (loading) {
+    console.log('🔍 DEBUG: AuthWrapper: Showing loading spinner');
     return (
       <div className="min-h-screen flex items-center justify-center bg-blue-50">
         <div className="text-center">
@@ -635,9 +652,11 @@ function AuthWrapper() {
   }
 
   if (user) {
+    console.log('🔍 DEBUG: AuthWrapper: User exists, returning null (will redirect)');
     return null; // Will redirect
   }
 
+  console.log('🔍 DEBUG: AuthWrapper: No user, rendering AuthForm');
   return <AuthForm />;
 }
 

@@ -49,10 +49,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user ?? null)
       if (session?.user) {
         console.log('AuthContext: User found, fetching profile...');
-        fetchProfile(session.user.id)
+        fetchProfile(session.user.id).finally(() => {
+          setLoading(false);
+          console.log('AuthContext: Profile fetch complete, loading set to false');
+        });
+      } else {
+        setLoading(false)
+        console.log('AuthContext: No session, loading set to false');
       }
-      setLoading(false)
-      console.log('AuthContext: Loading set to false');
       clearTimeout(timeoutId);
     }).catch(error => {
       console.error('AuthContext: Exception getting session:', error);
@@ -73,9 +77,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (session?.user) {
           console.log('AuthContext: User authenticated, fetching profile...');
           // Try to fetch profile but don't block authentication
-          fetchProfile(session.user.id).catch(error => {
-            console.log('AuthContext: Profile fetch failed, continuing without profile:', error);
+          fetchProfile(session.user.id).finally(() => {
             setLoading(false);
+            console.log('AuthContext: Profile fetch complete, loading set to false');
           });
         } else {
           console.log('AuthContext: No user, clearing profile');
@@ -83,8 +87,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setLoading(false);
         }
         
-        setLoading(false)
-        console.log('AuthContext: Auth state change - Loading set to false, User state:', session?.user ? 'Authenticated' : 'Not authenticated');
         clearTimeout(timeoutId);
       }
     )
