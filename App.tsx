@@ -25,10 +25,6 @@ function AppContent() {
   const navigate = useNavigate();
   const [isRedirecting, setIsRedirecting] = useState(false);
   
-  console.log('🔍 DEBUG: AppContent rendered - user =', user, 'loading =', loading, 'isRedirecting =', isRedirecting);
-  console.log('🔍 DEBUG: Current pathname =', window.location.pathname);
-  console.log('🔍 DEBUG: Authentication state - user:', user, 'loading:', loading);
-  
   // All state hooks must come first, before any conditional logic
   const [view, setView] = useState<'upload' | 'results' | 'history'>('upload');
   const [sourceFile, setSourceFile] = useState<File | null>(null);
@@ -52,19 +48,13 @@ function AppContent() {
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [activeHistoryEntryId, setActiveHistoryEntryId] = useState<string | null>(null);
 
-  console.log('AppContent: user =', user, 'loading =', loading, 'isRedirecting =', isRedirecting);
-  
   // Redirect to auth if not authenticated
   useEffect(() => {
-    console.log('🔍 DEBUG: AppContent useEffect triggered, user =', user, 'loading =', loading);
     if (!loading && !user) {
-      console.log('🔍 DEBUG: AppContent: Redirecting to /auth');
       navigate('/auth');
     } else if (!loading && user) {
-      console.log('🔍 DEBUG: AppContent: User authenticated, should render main app');
       // If we're on the auth page and user is authenticated, redirect to main app
       if (window.location.pathname === '/auth') {
-        console.log('🔍 DEBUG: AppContent: Redirecting from /auth to main app');
         setIsRedirecting(true);
         navigate('/', { replace: true });
       }
@@ -74,7 +64,6 @@ function AppContent() {
   // Simple redirect for unauthenticated users (removed aggressive redirects)
   useEffect(() => {
     if (!loading && !user && window.location.pathname !== '/auth') {
-      console.log('🔍 DEBUG: Simple redirect to /auth - user not authenticated');
       navigate('/auth', { replace: true });
     }
   }, [user, loading, navigate]);
@@ -112,7 +101,6 @@ function AppContent() {
 
   // Show loading while checking authentication (but not during redirects)
   if (loading && !isRedirecting) {
-    console.log('AppContent: Showing loading spinner');
     return (
       <div className="min-h-screen flex items-center justify-center bg-blue-50">
         <div className="text-center">
@@ -125,11 +113,8 @@ function AppContent() {
 
   // Don't render anything if not authenticated (will redirect)
   if (!user) {
-    console.log('AppContent: No user, returning null');
     return null;
   }
-
-  console.log('AppContent: User authenticated, rendering main app');
 
   useEffect(() => {
     localStorage.setItem('totalAnalyzedWords', totalAnalyzedWords.toString());
@@ -597,18 +582,6 @@ function AppContent() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
-        {/* VERSION INDICATOR */}
-        <div className="bg-blue-100 border-b-2 border-blue-400 p-2 text-center text-xs">
-          🚀 VERSION: 2024-12-19 16:00 UTC - Authentication fixes deployed - Commit: 42e2a4b
-        </div>
-        {/* DEBUG INDICATOR */}
-        <div className="bg-yellow-100 border-b-2 border-yellow-400 p-2 text-center text-sm">
-          🔍 DEBUG: User: {user ? user.email : 'None'} | Loading: {loading.toString()} | Path: {window.location.pathname}
-        </div>
-        {/* ENVIRONMENT CHECK */}
-        <div className="bg-red-100 border-b-2 border-red-400 p-2 text-center text-xs">
-          🚨 ENV CHECK: Supabase URL: {import.meta.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing'} | Supabase Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'}
-        </div>
         <Header 
             wordsUsed={totalAnalyzedWords}
             onAnalyzeDocument={handleStartNewAnalysis}
@@ -629,19 +602,13 @@ function AuthWrapper() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  console.log('🔍 DEBUG: AuthWrapper rendered - user:', user, 'loading:', loading);
-  console.log('🔍 DEBUG: AuthWrapper pathname =', window.location.pathname);
-
   useEffect(() => {
-    console.log('🔍 DEBUG: AuthWrapper useEffect triggered - user:', user, 'loading:', loading);
     if (!loading && user) {
-      console.log('🔍 DEBUG: AuthWrapper: User authenticated, redirecting to main app');
       navigate('/', { replace: true });
     }
   }, [user, loading, navigate]);
 
   if (loading) {
-    console.log('🔍 DEBUG: AuthWrapper: Showing loading spinner');
     return (
       <div className="min-h-screen flex items-center justify-center bg-blue-50">
         <div className="text-center">
@@ -653,11 +620,9 @@ function AuthWrapper() {
   }
 
   if (user) {
-    console.log('🔍 DEBUG: AuthWrapper: User exists, returning null (will redirect)');
     return null; // Will redirect
   }
 
-  console.log('🔍 DEBUG: AuthWrapper: No user, rendering AuthForm');
   return <AuthForm />;
 }
 

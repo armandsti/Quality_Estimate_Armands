@@ -35,19 +35,15 @@ export const Header: React.FC<HeaderProps> = ({ wordsUsed, onAnalyzeDocument, on
 
   const handleSignOut = async () => {
     try {
-      console.log('🔍 DEBUG Header: Starting sign out process...');
       setIsUserMenuOpen(false); // Close dropdown
       
-      console.log('🔍 DEBUG Header: Calling signOut()...');
       await signOut();
-      console.log('🔍 DEBUG Header: Sign out successful, redirecting to login...');
       
       // Simple redirect to login page after successful sign out
-      console.log('🔍 DEBUG Header: Navigating to /auth...');
       navigate('/auth', { replace: true });
       
     } catch (error) {
-      console.error('🔍 DEBUG Header: Sign out error:', error);
+      console.error('Sign out error:', error);
       // Even if there's an error, try to redirect
       navigate('/auth', { replace: true });
     }
