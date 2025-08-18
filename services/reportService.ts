@@ -11,6 +11,13 @@ export const exportToExcel = (errors: QAError[]) => {
   
   try {
     console.log('📊 Starting Excel export with', errors.length, 'errors');
+    
+    // Check if XLSX library is available
+    if (!XLSX || !XLSX.utils) {
+      console.error('❌ XLSX library not properly loaded');
+      throw new Error('XLSX library not available');
+    }
+    
     const worksheetData = errors.map(error => ({
       Severity: error.severity,
       Category: error.errorCategory,
@@ -65,10 +72,64 @@ export const exportToExcel = (errors: QAError[]) => {
   } catch (error) {
     console.error('❌ Error exporting to Excel:', error);
     console.error('Error details:', error instanceof Error ? error.message : String(error));
-    alert(`Failed to export Excel file: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
+    console.log('🔄 Trying CSV export as fallback...');
+    
+    // Try CSV export as fallback
+    try {
+      exportToCSV(errors);
+      alert('Excel export failed, but report was exported as CSV file instead.');
+    } catch (csvError) {
+      console.error('❌ CSV export also failed:', csvError);
+      alert(`Failed to export file: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
+    }
   }
 };
 
+// Fallback CSV export function
+export const exportToCSV = (errors: QAError[]) => {
+  if (!errors || errors.length === 0) {
+    alert('No errors to export. Please run an analysis first.');
+    return;
+  }
+  
+  try {
+    console.log('📊 Starting CSV export with', errors.length, 'errors');
+    
+    // Create CSV headers
+    const headers = ['Severity', 'Category', 'Error Type', 'Source Segment', 'Target Segment', 'Suggested Correction', 'Description'];
+    
+    // Create CSV rows
+    const rows = errors.map(error => [
+      error.severity || '',
+      error.errorCategory || '',
+      error.errorType || '',
+      `"${(error.sourceSegment || '').replace(/"/g, '""')}"`,
+      `"${(error.targetSegment || '').replace(/"/g, '""')}"`,
+      `"${(error.suggestedCorrection || '').replace(/"/g, '""')}"`,
+      `"${(error.description || '').replace(/"/g, '""')}"`,
+    ]);
+    
+    // Combine headers and rows
+    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+    
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'Translation_QA_Report.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    console.log('✅ CSV export completed successfully');
+  } catch (error) {
+    console.error('❌ Error exporting to CSV:', error);
+    throw error; // Re-throw to be handled by the caller
+  }
+};
 
 // Helper function to escape XML special characters.
 function escapeXml(text: string) {
