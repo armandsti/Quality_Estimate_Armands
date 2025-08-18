@@ -1,4 +1,4 @@
-const { GoogleGenAI, Type } = require('@google/genai');
+const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
 
 // Build prompt function
 const buildPrompt = (sourceText, targetText, glossaryText, referenceText, websiteText) => {
@@ -59,52 +59,52 @@ const buildPrompt = (sourceText, targetText, glossaryText, referenceText, websit
 
 // Response schema for Gemini
 const responseSchema = {
-  type: Type.ARRAY,
+  type: SchemaType.ARRAY,
   items: {
-    type: Type.OBJECT,
+    type: SchemaType.OBJECT,
     properties: {
       segmentId: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "The unique identifier of the segment (e.g., '[Segment 123]'), if one was provided in the source text. Should be omitted if no identifier is present.",
       },
       sourceSegment: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "The exact segment from the source text where the issue originates, excluding any segment ID prefix.",
       },
       targetSegment: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "The exact segment from the target text where the issue is found.",
       },
       sourceHighlight: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "Specific phrases or words in the source text that are relevant to the error. Multiple phrases should be separated by '|'.",
       },
       targetHighlight: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "Specific phrases or words in the target text that contain the error. Multiple phrases should be separated by '|'.",
       },
       errorCategory: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "The category of the error: 'Accuracy', 'Fluency', 'Terminology', 'Style', 'Format', 'Consistency', or 'Other'.",
       },
       errorType: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "The specific type of error: 'Mistranslation', 'Omission', 'Addition', 'Grammar', 'Spelling', 'Punctuation', 'Capitalization', 'Number format', 'Date format', 'Currency format', 'Unit conversion', 'Cultural adaptation', 'Register mismatch', 'Tone mismatch', 'Terminology inconsistency', 'Style inconsistency', or 'Other'.",
       },
       description: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "A clear, concise description of the error and why it's problematic.",
       },
       suggestedCorrection: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "The corrected version of the target segment that fixes all identified issues.",
       },
       suggestionHighlight: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "Specific phrases or words in the suggested correction that address the error. Multiple phrases should be separated by '|'.",
       },
       severity: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
         description: "The severity level: 'Critical' (major meaning error), 'Major' (significant quality issue), or 'Minor' (minor formatting or style issue).",
       },
     },
@@ -146,7 +146,7 @@ module.exports = async function handler(req, res) {
     }
 
     // Initialize Gemini
-    const genAI = new GoogleGenAI({ apiKey });
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Build the prompt

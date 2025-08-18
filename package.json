@@ -11,7 +11,7 @@
     "dev:full": "concurrently \"npm run server\" \"npm run dev\""
   },
   "dependencies": {
-    "@google/genai": "^1.12.0",
+    "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.55.0",
     "@types/react-router-dom": "^5.3.3",
     "cors": "^2.8.5",
