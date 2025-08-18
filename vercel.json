@@ -8,9 +8,12 @@
     }
   },
   "env": {
-    "GEMINI_API_KEY": "@gemini-api-key"
+    "GEMINI_API_KEY": "@gemini-api-key",
+    "VITE_SUPABASE_URL": "@supabase-url",
+    "VITE_SUPABASE_ANON_KEY": "@supabase-anon-key"
   },
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "framework": "vite"
 }
