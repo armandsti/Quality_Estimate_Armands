@@ -47,3 +47,61 @@ export interface HistoryEntry {
   confirmedCount?: number;
   rejectedCount?: number;
 }
+
+// New types for authentication and database
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name?: string;
+  avatar_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseHistoryEntry {
+  id: string;
+  user_id: string;
+  source_file_name: string;
+  target_file_name?: string;
+  source_file_content?: string;
+  target_file_content?: string;
+  error_count: number;
+  severity_counts: {
+    [Severity.Critical]: number;
+    [Severity.Major]: number;
+    [Severity.Minor]: number;
+  };
+  confirmed_count: number;
+  rejected_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseAnalysisError {
+  id: string;
+  history_entry_id: string;
+  segment_id?: string;
+  source_segment: string;
+  target_segment: string;
+  source_highlight?: string;
+  target_highlight?: string;
+  error_category: ErrorCategory;
+  error_type: string;
+  description: string;
+  suggested_correction: string;
+  suggestion_highlight?: string;
+  severity: Severity;
+  resolved: boolean;
+  rejected: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  user_metadata?: {
+    full_name?: string;
+    avatar_url?: string;
+  };
+}

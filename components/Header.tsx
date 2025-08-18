@@ -1,7 +1,9 @@
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TranslayLogo, HistoryIcon, UserIcon, ChatBubbleIcon, AnalyzeIcon } from './Icons';
 import { Loader } from './Loader';
+import { useAuth } from '../contexts/AuthContext';
 
 interface HeaderProps {
     wordsUsed: number;
@@ -11,14 +13,30 @@ interface HeaderProps {
     isProcessing: boolean;
 }
 
-
 export const Header: React.FC<HeaderProps> = ({ wordsUsed, onAnalyzeDocument, onShowHistory, onShowInProcess, isProcessing }) => {
+  const { user, profile, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      console.log('Header: Starting sign out process...');
+      await signOut();
+      console.log('Header: Sign out successful, redirecting to login...');
+      // Redirect to login page after successful sign out
+      navigate('/auth', { replace: true });
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+  };
+
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-3">
-            <TranslayLogo />
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+              <TranslayLogo />
+            </div>
             <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
               Translay
             </h1>
@@ -33,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({ wordsUsed, onAnalyzeDocument, on
                         <div className="text-sm font-bold text-slate-800">{wordsUsed.toLocaleString()} / 5,000</div>
                     </div>
                 </div>
-                <button className="px-4 py-1.5 text-sm font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                <button className="px-4 py-1.5 text-sm font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 shadow-sm">
                     Upgrade
                 </button>
              </div>
@@ -55,9 +73,33 @@ export const Header: React.FC<HeaderProps> = ({ wordsUsed, onAnalyzeDocument, on
                 <HistoryIcon />
                 History
              </button>
-             <button className="h-10 w-10 flex items-center justify-center rounded-full text-slate-600 bg-slate-200 hover:bg-slate-300">
-                <UserIcon />
-             </button>
+             
+             {/* User Menu */}
+             <div className="relative group">
+               <button className="h-10 w-10 flex items-center justify-center rounded-full text-slate-600 bg-slate-200 hover:bg-slate-300 transition-colors">
+                 <UserIcon />
+               </button>
+               
+               {/* Dropdown Menu */}
+               <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                 <div className="py-3">
+                   <div className="px-4 py-3 border-b border-slate-100">
+                     <div className="text-sm font-semibold text-slate-900">
+                       {profile?.full_name || user?.email}
+                     </div>
+                     <div className="text-xs text-slate-500 mt-1">
+                       {user?.email}
+                     </div>
+                   </div>
+                   <button
+                     onClick={handleSignOut}
+                     className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors duration-200 rounded-lg mx-2"
+                   >
+                     Sign Out
+                   </button>
+                 </div>
+               </div>
+             </div>
           </div>
         </div>
       </div>

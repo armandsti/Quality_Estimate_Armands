@@ -73,48 +73,45 @@ const responseSchema = {
       },
       targetSegment: {
         type: Type.STRING,
-        description: "The corresponding segment from the target text containing the error.",
+        description: "The exact segment from the target text where the issue is found.",
       },
       sourceHighlight: {
         type: Type.STRING,
-        description: "The specific text within the source segment that is relevant to the error. Pipe-separated for multiple.",
+        description: "Specific phrases or words in the source text that are relevant to the error. Multiple phrases should be separated by '|'.",
       },
       targetHighlight: {
         type: Type.STRING,
-        description: "The specific text within the target segment that contains the error. Pipe-separated for multiple.",
+        description: "Specific phrases or words in the target text that contain the error. Multiple phrases should be separated by '|'.",
       },
       errorCategory: {
         type: Type.STRING,
-        description: "The main category of the error.",
-        enum: ["Accuracy", "Completeness", "Consistency", "Fluency", "Style", "Terminology"],
+        description: "The category of the error: 'Accuracy', 'Fluency', 'Terminology', 'Style', 'Format', 'Consistency', or 'Other'.",
       },
       errorType: {
         type: Type.STRING,
-        description: "A specific classification of the error (e.g., Mistranslation, Grammar, Wrong term).",
+        description: "The specific type of error: 'Mistranslation', 'Omission', 'Addition', 'Grammar', 'Spelling', 'Punctuation', 'Capitalization', 'Number format', 'Date format', 'Currency format', 'Unit conversion', 'Cultural adaptation', 'Register mismatch', 'Tone mismatch', 'Terminology inconsistency', 'Style inconsistency', or 'Other'.",
       },
       description: {
         type: Type.STRING,
-        description: "A clear and concise explanation of the error. Consolidated if multiple errors.",
+        description: "A clear, concise description of the error and why it's problematic.",
       },
       suggestedCorrection: {
         type: Type.STRING,
-        description: "A corrected version of the target segment. Fixes all issues if multiple.",
+        description: "The corrected version of the target segment that fixes all identified issues.",
       },
       suggestionHighlight: {
         type: Type.STRING,
-        description: "The specific text within the suggested correction that has been changed. Pipe-separated for multiple.",
+        description: "Specific phrases or words in the suggested correction that address the error. Multiple phrases should be separated by '|'.",
       },
       severity: {
         type: Type.STRING,
-        description: "The severity of the error. Should be the most critical if multiple errors exist.",
-        enum: ["Critical", "Major", "Minor"],
+        description: "The severity level: 'Critical' (major meaning error), 'Major' (significant quality issue), or 'Minor' (minor formatting or style issue).",
       },
     },
-    required: ["sourceSegment", "targetSegment", "errorCategory", "errorType", "description", "suggestedCorrection", "severity"],
+    required: ["sourceSegment", "targetSegment", "sourceHighlight", "targetHighlight", "errorCategory", "errorType", "description", "suggestedCorrection", "suggestionHighlight", "severity"],
   },
 };
 
-// Vercel serverless function
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -123,7 +120,8 @@ export default async function handler(req, res) {
 
   // Handle preflight request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
@@ -131,75 +129,70 @@ export default async function handler(req, res) {
   }
 
   try {
-    // API key is ONLY available here on the server - never exposed to frontend
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'API key not configured on server' });
-    }
-
     const { sourceText, targetText, glossaryText, referenceText, websiteText } = req.body;
 
+    // Validate required fields
     if (!sourceText || !targetText) {
-      return res.status(400).json({ error: 'Source and target text are required' });
+      return res.status(400).json({ error: 'Source text and target text are required' });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    // Get API key from environment
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error('GEMINI_API_KEY environment variable not set');
+      return res.status(500).json({ error: 'AI service not configured' });
+    }
+
+    // Initialize Gemini
+    const genAI = new GoogleGenAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    // Build the prompt
     const prompt = buildPrompt(sourceText, targetText, glossaryText, referenceText, websiteText);
 
-    // Add retry logic for API calls
-    const maxRetries = 3;
-    let lastError = null;
+    // Generate response with schema
+    const result = await model.generateContent([prompt, responseSchema]);
+    const response = await result.response;
+    const text = response.text();
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: responseSchema,
-          },
-        });
-
-        if (response.promptFeedback && response.promptFeedback.blockReason) {
-          const blockReason = response.promptFeedback.blockReason;
-          const blockMessage = response.promptFeedback.blockReasonMessage || 'No additional details provided.';
-          throw new Error(`The request was blocked by the safety filter. Reason: ${blockReason}. Message: ${blockMessage}`);
-        }
-
-        const jsonText = response.text;
-    
-        if (!jsonText || jsonText.trim() === "") {
-          // If the model returns an empty response, it might mean no errors were found.
-          return res.status(200).json([]);
-        }
-
-        const result = JSON.parse(jsonText.trim());
-        return res.status(200).json(result);
-
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        
-        // Don't retry for blocked requests
-        if (lastError.message.startsWith('The request was blocked')) {
-          throw lastError;
-        }
-        
-        console.error(`Gemini API attempt ${attempt} failed:`, lastError);
-        
-        if (attempt < maxRetries) {
-          // Wait before retrying (exponential backoff)
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-          continue;
-        }
+    // Parse the response
+    let analysisResults;
+    try {
+      // Try to extract JSON from the response
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        analysisResults = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('No JSON array found in response');
       }
+    } catch (parseError) {
+      console.error('Failed to parse Gemini response:', parseError);
+      console.error('Raw response:', text);
+      return res.status(500).json({ error: 'Failed to parse AI response' });
     }
 
-    // If we get here, all retries failed
-    throw new Error(`Gemini API request failed after ${maxRetries} attempts. Last error: ${lastError?.message || 'Unknown error'}`);
+    // Validate and format the results
+    const formattedResults = analysisResults.map((error, index) => ({
+      id: index,
+      segmentId: error.segmentId || '',
+      sourceSegment: error.sourceSegment || '',
+      targetSegment: error.targetSegment || '',
+      sourceHighlight: error.sourceHighlight || '',
+      targetHighlight: error.targetHighlight || '',
+      errorCategory: error.errorCategory || 'Other',
+      errorType: error.errorType || 'Other',
+      description: error.description || '',
+      suggestedCorrection: error.suggestedCorrection || '',
+      suggestionHighlight: error.suggestionHighlight || '',
+      severity: error.severity || 'Minor',
+      resolved: false,
+      rejected: false
+    }));
+
+    res.status(200).json(formattedResults);
 
   } catch (error) {
-    console.error('Server error:', error);
-    return res.status(500).json({ error: error.message || 'Analysis failed' });
+    console.error('Analysis error:', error);
+    res.status(500).json({ error: error.message || 'Analysis failed' });
   }
 }

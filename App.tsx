@@ -1,91 +1,138 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Header } from './components/Header';
 import { UploadPage } from './components/UploadPage';
 import { ResultsPage } from './components/ResultsPage';
 import { HistoryPage } from './components/HistoryPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AuthForm } from './components/Auth/AuthForm';
+import { AuthCallback } from './components/Auth/AuthCallback';
 import { parseFile, parseBilingualFile } from './services/fileParserService';
 import { runQAAnalysis } from './services/aiService';
 import { exportToExcel, exportToDocx, exportToCorrectedBilingualFile } from './services/reportService';
 import { QAError, Severity, HistoryEntry } from './types';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { HistoryService } from './services/historyService';
 
 const countWords = (text: string): number => {
     if (!text) return 0;
     return text.trim().split(/\s+/).filter(Boolean).length;
 };
 
-export default function App() {
+function AppContent() {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  
+  // All state hooks must come first, before any conditional logic
   const [view, setView] = useState<'upload' | 'results' | 'history'>('upload');
-
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [targetFile, setTargetFile] = useState<File | null>(null);
   const [glossaryFile, setGlossaryFile] = useState<File | null>(null);
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
-
   const [sourceText, setSourceText] = useState('');
   const [targetText, setTargetText] = useState('');
   const [glossaryText, setGlossaryText] = useState('');
   const [referenceText, setReferenceText] = useState('');
   const [websiteText, setWebsiteText] = useState('');
-
   const [sourceWordCount, setSourceWordCount] = useState(0);
   const [totalAnalyzedWords, setTotalAnalyzedWords] = useState(() => {
     return parseInt(localStorage.getItem('totalAnalyzedWords') || '0', 10);
   });
-  
-  const [history, setHistory] = useState<HistoryEntry[]>(() => {
-    try {
-      const savedHistory = localStorage.getItem('translationHistory');
-      if (!savedHistory) return [];
-      
-      const parsed = JSON.parse(savedHistory);
-      // Validate that parsed data is an array
-      if (!Array.isArray(parsed)) {
-        console.warn("Invalid history format in localStorage, resetting");
-        return [];
-      }
-      
-      return parsed;
-    } catch (error) {
-      console.error("Could not parse history from localStorage", error);
-      // Clear corrupted data
-      try {
-        localStorage.removeItem('translationHistory');
-      } catch (e) {
-        console.error("Failed to clear corrupted localStorage data:", e);
-      }
-      return [];
-    }
-  });
-  
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [errors, setErrors] = useState<QAError[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  
   const [severityFilter, setSeverityFilter] = useState<Severity[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
-  
   const [activeHistoryEntryId, setActiveHistoryEntryId] = useState<string | null>(null);
+
+  console.log('AppContent: user =', user, 'loading =', loading, 'isRedirecting =', isRedirecting);
+  
+  // Redirect to auth if not authenticated
+  useEffect(() => {
+    console.log('AppContent: useEffect triggered, user =', user, 'loading =', loading);
+    if (!loading && !user) {
+      console.log('AppContent: Redirecting to /auth');
+      navigate('/auth');
+    } else if (!loading && user) {
+      console.log('AppContent: User authenticated, should render main app');
+      // If we're on the auth page and user is authenticated, redirect to main app
+      if (window.location.pathname === '/auth') {
+        console.log('AppContent: Redirecting from /auth to main app');
+        setIsRedirecting(true);
+        navigate('/', { replace: true });
+      }
+    }
+  }, [user, loading, navigate]);
+
+  // Reset redirecting state after navigation
+  useEffect(() => {
+    if (isRedirecting && window.location.pathname !== '/auth') {
+      console.log('AppContent: Navigation complete, resetting redirecting state');
+      setIsRedirecting(false);
+    }
+  }, [isRedirecting]);
+
+  // Load history from database when user is authenticated
+  useEffect(() => {
+    if (user) {
+      loadHistoryFromDatabase();
+    }
+  }, [user]);
+
+  // Show loading while checking authentication (but not during redirects)
+  if (loading && !isRedirecting) {
+    console.log('AppContent: Showing loading spinner');
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-blue-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-lg text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render anything if not authenticated (will redirect)
+  if (!user) {
+    console.log('AppContent: No user, returning null');
+    return null;
+  }
+
+  console.log('AppContent: User authenticated, rendering main app');
+
+  const loadHistoryFromDatabase = async () => {
+    if (!user) return;
+    
+    try {
+      const dbHistory = await HistoryService.getAnalysisHistory(user.id);
+      setHistory(dbHistory);
+    } catch (error) {
+      console.error('Failed to load history from database:', error);
+      // Fallback to localStorage if database fails
+      try {
+        const savedHistory = localStorage.getItem('translationHistory');
+        if (savedHistory) {
+          const parsed = JSON.parse(savedHistory);
+          if (Array.isArray(parsed)) {
+            setHistory(parsed);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load from localStorage:', e);
+      }
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('totalAnalyzedWords', totalAnalyzedWords.toString());
   }, [totalAnalyzedWords]);
-  
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      try {
-        localStorage.setItem('translationHistory', JSON.stringify(history));
-      } catch (error) {
-        console.error('Failed to save history to localStorage:', error);
-      }
-    }, 1000);
-    return () => clearTimeout(timeoutId);
-  }, [history]);
 
   // This effect syncs the user's review progress (accepts/rejects) with the history state.
   useEffect(() => {
-    if (activeHistoryEntryId) {
+    if (activeHistoryEntryId && user) {
         setHistory(prevHistory => 
             prevHistory.map(entry => {
                 if (entry.id === activeHistoryEntryId) {
@@ -97,8 +144,24 @@ export default function App() {
             })
         );
     }
-  }, [errors, activeHistoryEntryId]);
+  }, [errors, activeHistoryEntryId, user]);
 
+  // Show loading screen while checking authentication
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show authentication form if user is not logged in
+  if (!user) {
+    return <AuthForm />;
+  }
 
   const handleFileChange = (
     setter: React.Dispatch<React.SetStateAction<File | null>>, 
@@ -179,24 +242,57 @@ export default function App() {
       const result = await runQAAnalysis(sourceText, targetText, glossaryText, referenceText, websiteText);
       setErrors(result);
 
-      if (sourceFile) {
-        const newEntry: HistoryEntry = {
-          id: Date.now().toString(),
-          date: new Date().toISOString(),
-          sourceFileName: sourceFile.name,
-          targetFileName: targetFile?.name,
-          errorCount: result.length,
-          errors: result,
-          severityCounts: {
-            [Severity.Critical]: result.filter(e => e.severity === Severity.Critical).length,
-            [Severity.Major]: result.filter(e => e.severity === Severity.Major).length,
-            [Severity.Minor]: result.filter(e => e.severity === Severity.Minor).length,
-          },
-          confirmedCount: 0,
-          rejectedCount: 0,
-        };
-        setHistory(prev => [newEntry, ...prev]);
-        setActiveHistoryEntryId(newEntry.id);
+      if (sourceFile && user) {
+        try {
+          // Save to database
+          const historyId = await HistoryService.saveAnalysisHistory(
+            user.id,
+            sourceFile.name,
+            targetFile?.name,
+            sourceText,
+            targetText,
+            result
+          );
+
+          // Create local entry for immediate UI update
+          const newEntry: HistoryEntry = {
+            id: historyId,
+            date: new Date().toISOString(),
+            sourceFileName: sourceFile.name,
+            targetFileName: targetFile?.name,
+            errorCount: result.length,
+            errors: result,
+            severityCounts: {
+              [Severity.Critical]: result.filter(e => e.severity === Severity.Critical).length,
+              [Severity.Major]: result.filter(e => e.severity === Severity.Major).length,
+              [Severity.Minor]: result.filter(e => e.severity === Severity.Minor).length,
+            },
+            confirmedCount: 0,
+            rejectedCount: 0,
+          };
+          setHistory(prev => [newEntry, ...prev]);
+          setActiveHistoryEntryId(newEntry.id);
+        } catch (error) {
+          console.error('Failed to save to database:', error);
+          // Fallback to local storage
+          const newEntry: HistoryEntry = {
+            id: Date.now().toString(),
+            date: new Date().toISOString(),
+            sourceFileName: sourceFile.name,
+            targetFileName: targetFile?.name,
+            errorCount: result.length,
+            errors: result,
+            severityCounts: {
+              [Severity.Critical]: result.filter(e => e.severity === Severity.Critical).length,
+              [Severity.Major]: result.filter(e => e.severity === Severity.Major).length,
+              [Severity.Minor]: result.filter(e => e.severity === Severity.Minor).length,
+            },
+            confirmedCount: 0,
+            rejectedCount: 0,
+          };
+          setHistory(prev => [newEntry, ...prev]);
+          setActiveHistoryEntryId(newEntry.id);
+        }
       }
 
     } catch (error) {
@@ -207,7 +303,7 @@ export default function App() {
       clearTimeout(timeoutId);
       setIsLoading(false);
     }
-  }, [sourceText, targetText, glossaryText, referenceText, websiteText, sourceWordCount, sourceFile, targetFile]);
+  }, [sourceText, targetText, glossaryText, referenceText, websiteText, sourceWordCount, sourceFile, targetFile, user]);
 
   const handleStartNewAnalysis = useCallback(() => {
     setView('upload');
@@ -240,15 +336,34 @@ export default function App() {
   const handleReturnToResults = useCallback(() => {
     setView('results');
   }, []);
-  
-  const handleClearHistory = useCallback(() => {
+
+  const handleClearHistory = useCallback(async () => {
     if (window.confirm("Are you sure you want to permanently delete all analysis history? This action cannot be undone.")) {
+      // Delete all history from database if user is authenticated
+      if (user) {
+        try {
+          for (const entry of history) {
+            await HistoryService.deleteAnalysisHistory(entry.id);
+          }
+        } catch (error) {
+          console.error('Failed to clear history from database:', error);
+        }
+      }
       setHistory([]);
     }
-  }, []);
+  }, [user, history]);
 
-  const handleDeleteHistoryEntry = useCallback((entryId: string) => {
+  const handleDeleteHistoryEntry = useCallback(async (entryId: string) => {
     if (window.confirm("Are you sure you want to delete this analysis report? This action cannot be undone.")) {
+      // Delete from database if user is authenticated
+      if (user) {
+        try {
+          await HistoryService.deleteAnalysisHistory(entryId);
+        } catch (error) {
+          console.error('Failed to delete from database:', error);
+        }
+      }
+      
       setHistory(prev => prev.filter(entry => entry.id !== entryId));
       
       // If we're deleting the currently active entry, clear it
@@ -257,7 +372,7 @@ export default function App() {
         setErrors([]);
       }
     }
-  }, [activeHistoryEntryId]);
+  }, [activeHistoryEntryId, user]);
   
   const handleViewHistoryReport = useCallback((entry: HistoryEntry) => {
     setApiError(null);
@@ -277,22 +392,39 @@ export default function App() {
     setView('results');
   }, []);
 
-
-  const handleApplyCorrection = useCallback((errorId: number) => {
+  const handleApplyCorrection = useCallback(async (errorId: number) => {
     setErrors(prevErrors =>
         prevErrors.map(e =>
             e.id === errorId ? { ...e, resolved: true, rejected: false } : e
         )
     );
-  }, []);
 
-  const handleRejectCorrection = useCallback((errorId: number) => {
+    // Update database if user is authenticated
+    if (user) {
+      try {
+        await HistoryService.updateErrorStatus(errorId.toString(), true, false);
+      } catch (error) {
+        console.error('Failed to update database:', error);
+      }
+    }
+  }, [user]);
+
+  const handleRejectCorrection = useCallback(async (errorId: number) => {
     setErrors(prevErrors =>
       prevErrors.map(e =>
         e.id === errorId ? { ...e, rejected: true, resolved: false } : e
       )
     );
-  }, []);
+
+    // Update database if user is authenticated
+    if (user) {
+      try {
+        await HistoryService.updateErrorStatus(errorId.toString(), false, true);
+      } catch (error) {
+        console.error('Failed to update database:', error);
+      }
+    }
+  }, [user]);
 
   const handleSuggestionEdit = useCallback((errorId: number, newSuggestion: string) => {
     setErrors(prevErrors =>
@@ -302,14 +434,22 @@ export default function App() {
     );
   }, []);
   
-  const handleRevertCorrection = useCallback((errorId: number) => {
+  const handleRevertCorrection = useCallback(async (errorId: number) => {
     setErrors(prevErrors =>
         prevErrors.map(e =>
             e.id === errorId ? { ...e, resolved: false, rejected: false } : e
         )
     );
-  }, []);
 
+    // Update database if user is authenticated
+    if (user) {
+      try {
+        await HistoryService.updateErrorStatus(errorId.toString(), false, false);
+      } catch (error) {
+        console.error('Failed to update database:', error);
+      }
+    }
+  }, [user]);
 
   const handleDownloadCorrectedFile = useCallback(() => {
     const resolvedErrors = errors.filter(e => e.resolved);
@@ -449,7 +589,6 @@ export default function App() {
     }
   }
 
-
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
@@ -465,5 +604,52 @@ export default function App() {
         </main>
       </div>
     </ErrorBoundary>
+  );
+}
+
+// AuthWrapper component to handle authentication redirects
+function AuthWrapper() {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && user) {
+      console.log('AuthWrapper: User authenticated, redirecting to main app');
+      navigate('/', { replace: true });
+    }
+  }, [user, loading, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-blue-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-lg text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return null; // Will redirect
+  }
+
+  return <AuthForm />;
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth" element={<AuthWrapper />} />
+          <Route path="/upload" element={<AppContent />} />
+          <Route path="/results" element={<AppContent />} />
+          <Route path="/history" element={<AppContent />} />
+          <Route path="/" element={<AppContent />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
