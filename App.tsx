@@ -99,28 +99,12 @@ function AppContent() {
     }
   }, [user]);
 
-  // Show loading while checking authentication (but not during redirects)
-  if (loading && !isRedirecting) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-blue-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-lg text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Don't render anything if not authenticated (will redirect)
-  if (!user) {
-    return null;
-  }
-
+  // Persist total analyzed words to localStorage
   useEffect(() => {
     localStorage.setItem('totalAnalyzedWords', totalAnalyzedWords.toString());
   }, [totalAnalyzedWords]);
 
-  // This effect syncs the user's review progress (accepts/rejects) with the history state.
+  // Sync review progress with history state
   useEffect(() => {
     if (activeHistoryEntryId && user) {
         setHistory(prevHistory => 
@@ -136,22 +120,7 @@ function AppContent() {
     }
   }, [errors, activeHistoryEntryId, user]);
 
-  // Show loading screen while checking authentication
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show authentication form if user is not logged in
-  if (!user) {
-    return <AuthForm />;
-  }
+  // Note: Do NOT return early here; keep hook order consistent.
 
   const handleFileChange = (
     setter: React.Dispatch<React.SetStateAction<File | null>>, 
@@ -577,6 +546,22 @@ function AppContent() {
                         onResetTotalWords={handleResetTotalWords}
                     />;
     }
+  }
+
+  // Safe early returns AFTER all hooks are declared
+  if (loading && !isRedirecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-blue-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-lg text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
   }
 
   return (
