@@ -71,39 +71,13 @@ function AppContent() {
     }
   }, [user, loading, navigate]);
 
-  // Force redirect if not authenticated and not loading
+  // Simple redirect for unauthenticated users (removed aggressive redirects)
   useEffect(() => {
     if (!loading && !user && window.location.pathname !== '/auth') {
-      console.log('🔍 DEBUG: Force redirect to /auth - user not authenticated');
+      console.log('🔍 DEBUG: Simple redirect to /auth - user not authenticated');
       navigate('/auth', { replace: true });
     }
   }, [user, loading, navigate]);
-
-  // Immediate redirect for unauthenticated users
-  useEffect(() => {
-    const checkAuth = () => {
-      if (!loading && !user && window.location.pathname !== '/auth') {
-        console.log('🔍 DEBUG: Immediate redirect to /auth');
-        window.location.href = '/auth';
-      }
-    };
-    
-    // Check immediately
-    checkAuth();
-    
-    // Also check after a short delay to catch any race conditions
-    const timeoutId = setTimeout(checkAuth, 100);
-    
-    return () => clearTimeout(timeoutId);
-  }, [user, loading]);
-
-  // Reset redirecting state after navigation
-  useEffect(() => {
-    if (isRedirecting && window.location.pathname !== '/auth') {
-      console.log('AppContent: Navigation complete, resetting redirecting state');
-      setIsRedirecting(false);
-    }
-  }, [isRedirecting]);
 
   // Load history from database when user is authenticated
   useEffect(() => {

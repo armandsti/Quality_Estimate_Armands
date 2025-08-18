@@ -42,15 +42,9 @@ export const Header: React.FC<HeaderProps> = ({ wordsUsed, onAnalyzeDocument, on
       await signOut();
       console.log('🔍 DEBUG Header: Sign out successful, redirecting to login...');
       
-      // Force redirect to login page after successful sign out
+      // Simple redirect to login page after successful sign out
       console.log('🔍 DEBUG Header: Navigating to /auth...');
       navigate('/auth', { replace: true });
-      
-      // Force page reload to ensure clean state
-      setTimeout(() => {
-        console.log('🔍 DEBUG Header: Force reloading page...');
-        window.location.href = '/auth';
-      }, 100);
       
     } catch (error) {
       console.error('🔍 DEBUG Header: Sign out error:', error);

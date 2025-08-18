@@ -33,7 +33,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const timeoutId = setTimeout(() => {
       console.log('AuthContext: Timeout reached, forcing loading to false');
       setLoading(false);
-    }, 8000); // 8 second timeout (reduced from 10)
+    }, 5000); // Reduced to 5 seconds
     
     // Get initial session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
@@ -68,15 +68,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('AuthContext: Auth state change event:', event, session ? 'Session present' : 'No session');
-        console.log('AuthContext: Session details:', session);
-        console.log('AuthContext: User details:', session?.user);
         
         setSession(session)
         setUser(session?.user ?? null)
         
         if (session?.user) {
           console.log('AuthContext: User authenticated, fetching profile...');
-          // Try to fetch profile but don't block authentication
           fetchProfile(session.user.id).finally(() => {
             setLoading(false);
             console.log('AuthContext: Profile fetch complete, loading set to false');
