@@ -4,13 +4,27 @@ import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 
 export const exportToExcel = (errors: QAError[]) => {
+  console.log('📊 Export function called with', errors.length, 'errors');
+  
   if (!errors || errors.length === 0) {
     alert('No errors to export. Please run an analysis first.');
     return;
   }
   
+  // Always try CSV export for now since XLSX is not working reliably
   try {
-    console.log('📊 Starting Excel export with', errors.length, 'errors');
+    console.log('🔄 Using CSV export (XLSX library issue detected)');
+    exportToCSV(errors);
+    return;
+  } catch (csvError) {
+    console.error('❌ CSV export failed:', csvError);
+    alert('Failed to export report. Please try again.');
+    return;
+  }
+  
+  // Original Excel code (kept for future when XLSX is fixed)
+  try {
+    console.log('📊 Attempting Excel export with', errors.length, 'errors');
     
     // Check if XLSX library is available
     if (!XLSX || !XLSX.utils) {
@@ -125,6 +139,7 @@ export const exportToCSV = (errors: QAError[]) => {
     URL.revokeObjectURL(url);
     
     console.log('✅ CSV export completed successfully');
+    alert('Report exported successfully as CSV file! You can open it in Excel.');
   } catch (error) {
     console.error('❌ Error exporting to CSV:', error);
     throw error; // Re-throw to be handled by the caller
