@@ -164,6 +164,53 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ history, onViewReport,
                     </div>
                   )}
 
+                  {/* Viewers/Editors Information */}
+                  {entry.viewers && entry.viewers.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-slate-200">
+                          <div className="text-xs text-slate-600 mb-1">
+                              <span className="font-semibold">Viewed by:</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                              {entry.viewers.map((viewer, index) => (
+                                  <span key={index} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                                      {viewer.name || viewer.email}
+                                      <span className="ml-1 text-green-600">
+                                          ({new Date(viewer.viewedAt).toLocaleDateString()})
+                                      </span>
+                                  </span>
+                              ))}
+                          </div>
+                      </div>
+                  )}
+
+                  {/* Decisions Information */}
+                  {entry.decisions && Object.keys(entry.decisions).length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-slate-200">
+                          <div className="text-xs text-slate-600 mb-1">
+                              <span className="font-semibold">Decisions:</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                              {Object.entries(entry.decisions).map(([errorId, decision]: [string, any]) => (
+                                  <span key={errorId} className={`text-xs px-2 py-1 rounded-full ${
+                                      decision.accepted 
+                                          ? 'bg-green-100 text-green-700' 
+                                          : 'bg-red-100 text-red-700'
+                                  }`}>
+                                      {decision.accepted ? '✓ Accepted' : '✗ Rejected'}
+                                      <span className="ml-1 text-slate-600">
+                                          by {decision.decidedBy}
+                                      </span>
+                                      {decision.comment && (
+                                          <span className="ml-1 text-slate-500 italic">
+                                              "{decision.comment}"
+                                          </span>
+                                      )}
+                                  </span>
+                              ))}
+                          </div>
+                      </div>
+                  )}
+
               </div>
             )
           })}

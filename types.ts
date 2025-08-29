@@ -46,6 +46,24 @@ export interface HistoryEntry {
   };
   confirmedCount?: number;
   rejectedCount?: number;
+  creator?: {
+    id: string;
+    email: string;
+    name?: string;
+  };
+  viewers?: Array<{
+    id: string;
+    email: string;
+    name?: string;
+    viewedAt: string;
+  }>;
+  decisions?: Record<string, {
+    accepted: boolean;
+    rejected: boolean;
+    decidedBy: string;
+    decidedAt: string;
+    comment?: string;
+  }>;
 }
 
 // New types for authentication and database

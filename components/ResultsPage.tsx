@@ -220,6 +220,13 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
             isOpen={isShareModalOpen}
             onClose={() => setIsShareModalOpen(false)}
             errors={allErrors}
+            sourceFile={sourceFile}
+            targetFile={targetFile}
+            metadata={{
+              userName: 'QA Team',
+              timestamp: new Date().toISOString(),
+              totalIssues: allErrors.length
+            }}
         />
     </div>
   );

@@ -8,6 +8,7 @@ import { HistoryPage } from './components/HistoryPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthForm } from './components/Auth/AuthForm';
 import { AuthCallback } from './components/Auth/AuthCallback';
+import { SharedReportView } from './components/SharedReportView';
 import { parseFile, parseBilingualFile } from './services/fileParserService';
 import { runQAAnalysis } from './services/aiService';
 import { exportToExcel, exportToDocx, exportToCorrectedBilingualFile } from './services/reportService';
@@ -618,6 +619,7 @@ export default function App() {
         <Routes>
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/auth" element={<AuthWrapper />} />
+          <Route path="/shared-report/:reportId" element={<SharedReportView />} />
           <Route path="/" element={<AppContent />} />
           <Route path="/upload" element={<AppContent />} />
           <Route path="/results" element={<AppContent />} />

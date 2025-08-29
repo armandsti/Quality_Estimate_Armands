@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { QAError, Severity } from '../types';
 import { XCircleIcon, LinkIcon, EnvelopeIcon } from './Icons';
+import { useAuth } from '../contexts/AuthContext';
+import { generateShareableLink } from '../services/reportService';
 
 // Icon component copied from Icons.tsx to be used locally, to avoid changing existing patterns.
 const Icon: React.FC<{ children: React.ReactNode; className?: string; }> = ({ children, className = "h-6 w-6" }) => (
@@ -10,24 +12,49 @@ const Icon: React.FC<{ children: React.ReactNode; className?: string; }> = ({ ch
     </svg>
 );
 // Local ShareIcon for the modal title.
-const ShareTitleIcon = () => <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.195.025.39.05.588.08a2.25 2.25 0 011.635 1.635c.03.198.055.393.08.588m-2.303-.866a2.25 2.25 0 00-2.303.866m2.303-.866c.225.225.415.48.588.75m-2.303-.866a2.25 2.25 0 00-.866 2.303m.866-2.303c.27.173.57.308.885.4a2.25 2.25 0 01-1.635 1.635c-.198.03-.393.055-.588.08m2.303-.866c-.225-.225-.415-.48-.588-.75m2.303.866c.27.173.57-.308.885-.4a2.25 2.25 0 001.635-1.635c.03-.198.055-.393.08-.588m-2.303-.866a2.25 2.25 0 012.303-.866m-2.303.866c-.225.225-.415-.48-.588.75m2.303.866c.27.173.57-.308.885-.4a2.25 2.25 0 001.635 1.635c.198.03.393.055.588.08m-2.303-.866c.225-.225-.415-.48-.588-.75m-2.303-.866a2.25 2.25 0 01-.866-2.303m.866-2.303c.27.173.57-.308.885-.4a2.25 2.25 0 011.635-1.635c.03-.198.055-.393.08-.588m0 0a2.25 2.25 0 100-2.186m0 2.186a2.25 2.25 0 110-2.186" /></Icon>;
+const ShareTitleIcon = () => <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.195.025.39.05.588.08a2.25 2.25 0 011.635 1.635c.03.198.055.393.08.588m-2.303-.866a2.25 2.25 0 00-2.303.866m2.303-.866c.225.225.415.48.588.75m-2.303-.866a2.25 2.25 0 00-.866 2.303m.866-2.303c.27.173.57.308.885.4a2.25 2.25 0 01-1.635 1.635c-.198.03-.393.055-.588.08m2.303-.866c-.225-.225-.415-.48-.588-.75m2.303.866c.27.173.57-.308.885-.4a2.25 2.25 0 001.635-1.635c.198.03.393.055.588.08m-2.303-.866a2.25 2.25 0 012.303-.866m-2.303.866c-.225.225-.415-.48-.588.75m2.303.866c.27.173.57-.308.885-.4a2.25 2.25 0 001.635-1.635c.198.03.393.055.588.08m-2.303-.866c.225-.225-.415-.48-.588-.75m-2.303-.866a2.25 2.25 0 01-.866-2.303m.866-2.303c.27.173.57-.308.885-.4a2.25 2.25 0 011.635-1.635c.03-.198.055-.393.08-.588m0 0a2.25 2.25 0 100-2.186m0 2.186a2.25 2.25 0 110-2.186" /></Icon>;
 
 
 interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
   errors: QAError[];
+  sourceFile?: File;
+  targetFile?: File;
+  metadata?: any;
 }
 
-export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors }) => {
+export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors, sourceFile, targetFile, metadata }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [shareLink, setShareLink] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
-    if (isOpen) {
-      setShareLink(window.location.href);
+    if (isOpen && errors.length > 0) {
+      generateShareableReport();
     }
-  }, [isOpen]);
+  }, [isOpen, errors]);
+
+  const generateShareableReport = async () => {
+    try {
+      setIsGenerating(true);
+      const creator = user ? {
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.full_name || user.email
+      } : undefined;
+      
+      const link = await generateShareableLink(errors, sourceFile, targetFile, metadata, creator);
+      setShareLink(link);
+    } catch (error) {
+      console.error('Failed to generate shareable link:', error);
+      // Fallback to current URL if generation fails
+      setShareLink(window.location.href);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   if (!isOpen) {
     return null;
@@ -56,9 +83,13 @@ Summary:
 - Major: ${majorCount}
 - Minor: ${minorCount}
 
-Please see the attached exported report for full details.
+Source File: ${sourceFile?.name || 'Unknown'}
+Target File: ${targetFile?.name || 'Unknown'}
 
-You can view the project here: ${shareLink}
+Please review the detailed report at: ${shareLink}
+
+Best regards,
+${metadata?.userName || 'QA Team'}
     `.trim());
 
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
@@ -82,28 +113,35 @@ You can view the project here: ${shareLink}
                 id="share-link"
                 type="text"
                 readOnly
-                value={shareLink}
+                value={isGenerating ? 'Generating link...' : shareLink}
                 className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-slate-600 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
               <button
                 onClick={handleCopyLink}
-                className="px-4 py-2 text-sm font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 w-28 transition-all"
+                disabled={isGenerating || !shareLink}
+                className="px-4 py-2 text-sm font-semibold rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 w-28 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isCopied ? 'Copied!' : 'Copy'}
               </button>
             </div>
+            {shareLink && (
+              <p className="text-xs text-slate-500 mt-2">
+                This link will allow vendors to view the complete QA report with all details.
+              </p>
+            )}
           </div>
           
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2"><EnvelopeIcon />Share via Email</label>
             <button
               onClick={handleEmailShare}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3 border border-slate-300 text-base font-medium rounded-lg text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+              disabled={isGenerating || !shareLink}
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 border border-slate-300 text-base font-medium rounded-lg text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Compose Email
             </button>
             <p className="text-xs text-slate-500 mt-2 text-center">
-              Opens your default email client. Remember to attach the exported report.
+              Opens your default email client with a pre-filled message including the shareable link.
             </p>
           </div>
         </div>

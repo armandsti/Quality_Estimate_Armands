@@ -1,150 +1,208 @@
 import { QAError } from '../types';
 import saveAs from 'file-saver';
 import JSZip from 'jszip';
-import * as XLSX from 'xlsx';
 
 export const exportToExcel = (errors: QAError[]) => {
   console.log('📊 Export function called with', errors.length, 'errors');
-  
+
   if (!errors || errors.length === 0) {
     alert('No errors to export. Please run an analysis first.');
     return;
   }
-  
-  // Always try CSV export for now since XLSX is not working reliably
+
+  // Use CSV export since XLSX is not available
   try {
-    console.log('🔄 Using CSV export (XLSX library issue detected)');
+    console.log('🔄 Using CSV export');
     exportToCSV(errors);
-    return;
   } catch (csvError) {
     console.error('❌ CSV export failed:', csvError);
     alert('Failed to export report. Please try again.');
-    return;
-  }
-  
-  // Original Excel code (kept for future when XLSX is fixed)
-  try {
-    console.log('📊 Attempting Excel export with', errors.length, 'errors');
-    
-    // Check if XLSX library is available
-    if (!XLSX || !XLSX.utils) {
-      console.error('❌ XLSX library not properly loaded');
-      throw new Error('XLSX library not available');
-    }
-    
-    const worksheetData = errors.map(error => ({
-      Severity: error.severity,
-      Category: error.errorCategory,
-      'Error Type': error.errorType,
-      'Source Segment': error.sourceSegment,
-      'Target Segment': error.targetSegment,
-      'Suggested Correction': error.suggestedCorrection,
-      Description: error.description,
-    }));
-  const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'QA Report');
-  
-  // Define column widths
-  if (worksheetData.length > 0) {
-    const colA_width = Math.max('Severity'.length, ...worksheetData.map(r => r.Severity?.length ?? 0)) + 2;
-    const colB_width = Math.max('Category'.length, ...worksheetData.map(r => r.Category?.length ?? 0)) + 2;
-    const colC_width = Math.max('Error Type'.length, ...worksheetData.map(r => r['Error Type']?.length ?? 0)) + 2;
-    
-    worksheet['!cols'] = [
-        { wch: colA_width }, // A: Severity
-        { wch: colB_width }, // B: Category
-        { wch: colC_width }, // C: Error Type
-        { wch: 70 }, // D: Source Segment
-        { wch: 70 }, // E: Target Segment
-        { wch: 70 }, // F: Suggested Correction
-        { wch: 70 }, // G: Description
-    ];
-  }
-  
-  // Apply text wrapping and alignment to specific columns
-  const range = XLSX.utils.decode_range(worksheet['!ref']);
-  // Start from R=1 to skip the header row.
-  for (let R = 1; R <= range.e.r; ++R) {
-    // Columns D, E, F, G correspond to indices 3, 4, 5, 6.
-    for (let C = 3; C <= 6; ++C) {
-      const cell_address = XLSX.utils.encode_cell({c: C, r: R});
-      const cell = worksheet[cell_address];
-      
-      if (cell) {
-        if (!cell.s) {
-          cell.s = {};
-        }
-        cell.s.alignment = { wrapText: true, vertical: 'top', horizontal: 'left' };
-      }
-    }
-  }
-  
-    console.log('📝 Writing Excel file...');
-    XLSX.writeFile(workbook, 'Translation_QA_Report.xlsx');
-    console.log('✅ Excel export completed successfully');
-  } catch (error) {
-    console.error('❌ Error exporting to Excel:', error);
-    console.error('Error details:', error instanceof Error ? error.message : String(error));
-    console.log('🔄 Trying CSV export as fallback...');
-    
-    // Try CSV export as fallback
-    try {
-      exportToCSV(errors);
-      alert('Excel export failed, but report was exported as CSV file instead.');
-    } catch (csvError) {
-      console.error('❌ CSV export also failed:', csvError);
-      alert(`Failed to export file: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
-    }
   }
 };
 
-// Fallback CSV export function
 export const exportToCSV = (errors: QAError[]) => {
   if (!errors || errors.length === 0) {
     alert('No errors to export. Please run an analysis first.');
     return;
   }
-  
+
+  const csvContent = [
+    ['Severity', 'Category', 'Error Type', 'Source Segment', 'Target Segment', 'Suggested Correction', 'Description'],
+    ...errors.map(error => [
+      error.severity,
+      error.errorCategory,
+      error.errorType,
+      `"${error.sourceSegment.replace(/"/g, '""')}"`,
+      `"${error.targetSegment.replace(/"/g, '""')}"`,
+      `"${error.description.replace(/"/g, '""')}"`
+    ])
+  ].map(row => row.join(',')).join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  saveAs(blob, 'Translation_QA_Report.csv');
+};
+
+export const exportToDocx = async (errors: QAError[], sourceFile?: File, targetFile?: File) => {
+  if (!errors || errors.length === 0) {
+    alert('No errors to export. Please run an analysis first.');
+    return;
+  }
+
   try {
-    console.log('📊 Starting CSV export with', errors.length, 'errors');
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+
+    // Create the document content
+    let content = `Translation QA Report\n`;
+    content += `Generated: ${new Date().toLocaleString()}\n\n`;
     
-    // Create CSV headers
-    const headers = ['Severity', 'Category', 'Error Type', 'Source Segment', 'Target Segment', 'Suggested Correction', 'Description'];
-    
-    // Create CSV rows
-    const rows = errors.map(error => [
-      error.severity || '',
-      error.errorCategory || '',
-      error.errorType || '',
-      `"${(error.sourceSegment || '').replace(/"/g, '""')}"`,
-      `"${(error.targetSegment || '').replace(/"/g, '""')}"`,
-      `"${(error.suggestedCorrection || '').replace(/"/g, '""')}"`,
-      `"${(error.description || '').replace(/"/g, '""')}"`,
-    ]);
-    
-    // Combine headers and rows
-    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-    
-    // Create and download the file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'Translation_QA_Report.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    console.log('✅ CSV export completed successfully');
-    alert('Report exported successfully as CSV file! You can open it in Excel.');
+    if (sourceFile) content += `Source File: ${sourceFile.name}\n`;
+    if (targetFile) content += `Target File: ${targetFile.name}\n`;
+    content += `Total Issues: ${errors.length}\n\n`;
+
+    errors.forEach((error, index) => {
+      content += `Issue ${index + 1}:\n`;
+      content += `Severity: ${error.severity}\n`;
+      content += `Category: ${error.errorCategory}\n`;
+      content += `Error Type: ${error.errorType}\n`;
+      content += `Source Segment: ${error.sourceSegment}\n`;
+      content += `Target Segment: ${error.targetSegment}\n`;
+      content += `Suggested Correction: ${error.suggestedCorrection}\n`;
+      content += `Description: ${error.description}\n\n`;
+    });
+
+    // Add content to zip
+    zip.file('QA_Report.txt', content);
+
+    // Generate and download zip file
+    const blob = await zip.generateAsync({ type: 'blob' });
+    saveAs(blob, 'Translation_QA_Report.zip');
   } catch (error) {
-    console.error('❌ Error exporting to CSV:', error);
-    throw error; // Re-throw to be handled by the caller
+    console.error('Failed to export to DOCX:', error);
+    alert('Failed to export report. Please try again.');
   }
 };
+
+// Generate a unique report ID
+function generateReportId(): string {
+  const timestamp = Date.now().toString(36);
+  const randomStr = Math.random().toString(36).substring(2, 8);
+  return `report_${timestamp}_${randomStr}`;
+}
+
+// Generate a shareable link for a QA report
+export async function generateShareableLink(
+  errors: QAError[],
+  sourceFile?: File,
+  targetFile?: File,
+  metadata?: any,
+  creator?: any
+): Promise<string> {
+  try {
+    const reportId = generateReportId();
+    const reportData = {
+      id: reportId,
+      timestamp: new Date().toISOString(),
+      errors: errors,
+      sourceFileName: sourceFile?.name || 'Unknown',
+      targetFileName: targetFile?.name || 'Unknown',
+      metadata: metadata || {},
+      creator: creator || {
+        id: 'unknown',
+        email: 'unknown@example.com',
+        name: 'Unknown User'
+      },
+      viewers: [],
+      decisions: {}, // Initialize decisions object
+      summary: {
+        totalIssues: errors.length,
+        criticalCount: errors.filter(e => e.severity === 'Critical').length,
+        majorCount: errors.filter(e => e.severity === 'Major').length,
+        minorCount: errors.filter(e => e.severity === 'Minor').length,
+      }
+    };
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    storedReports[reportId] = reportData;
+    localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    const baseUrl = window.location.origin;
+    const shareableUrl = `${baseUrl}/shared-report/${reportId}`;
+    return shareableUrl;
+  } catch (error) {
+    console.error('Failed to generate shareable link:', error);
+    throw new Error('Failed to generate shareable link');
+  }
+}
+
+export function getSharedReport(reportId: string): any | null {
+  try {
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    return storedReports[reportId] || null;
+  } catch (error) {
+    console.error('Failed to retrieve shared report:', error);
+    return null;
+  }
+}
+
+export async function updateReportViewers(reportId: string, viewer: {
+  id: string;
+  email: string;
+  name?: string;
+  viewedAt: string;
+}): Promise<void> {
+  try {
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    const report = storedReports[reportId];
+
+    if (report) {
+      if (!report.viewers) {
+        report.viewers = [];
+      }
+      const existingViewerIndex = report.viewers.findIndex((v: any) => v.id === viewer.id);
+      if (existingViewerIndex >= 0) {
+        report.viewers[existingViewerIndex].viewedAt = viewer.viewedAt;
+      } else {
+        report.viewers.push(viewer);
+      }
+      storedReports[reportId] = report;
+      localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    }
+  } catch (error) {
+    console.error('Failed to update report viewers:', error);
+  }
+}
+
+export async function updateReportDecisions(reportId: string, errorId: number, decision: {
+  accepted: boolean;
+  rejected: boolean;
+  decidedBy: string;
+  decidedAt: string;
+  comment?: string;
+}): Promise<void> {
+  try {
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    const report = storedReports[reportId];
+
+    if (report) {
+      if (!report.decisions) {
+        report.decisions = {};
+      }
+      report.decisions[errorId] = decision;
+      storedReports[reportId] = report;
+      localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    }
+  } catch (error) {
+    console.error('Failed to update report decisions:', error);
+  }
+}
+
+export function getAllSharedReports(): Record<string, any> {
+  try {
+    return JSON.parse(localStorage.getItem('sharedReports') || '{}');
+  } catch (error) {
+    console.error('Failed to retrieve shared reports:', error);
+    return {};
+  }
+}
 
 // Helper function to escape XML special characters.
 function escapeXml(text: string) {
@@ -254,7 +312,7 @@ export const exportToCorrectedBilingualFile = async (
                          }
                      }
                  }
-            }
+             }
         }
         
         const serializer = new XMLSerializer();
@@ -272,7 +330,7 @@ export const exportToCorrectedBilingualFile = async (
     }
 };
 
-export const exportToDocx = async (
+export const exportToCorrectedDocx = async (
     originalFile: File,
     errorsToApply: QAError[],
     originalFilename: string
