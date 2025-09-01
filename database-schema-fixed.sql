@@ -1,5 +1,8 @@
--- Database schema for QA Analysis Tool (Fixed for Supabase)
--- Run this in your Supabase SQL editor
+-- Fixed Database schema for QA Analysis Tool
+-- Run this in your Supabase SQL editor to fix the current issues
+
+-- Enable Row Level Security
+ALTER TABLE auth.users ENABLE ROW LEVEL SECURITY;
 
 -- Create profiles table
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -11,7 +14,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create analysis_history table
+-- Drop and recreate analysis_history table with correct column types
+DROP TABLE IF EXISTS public.analysis_errors CASCADE;
+DROP TABLE IF EXISTS public.analysis_history CASCADE;
+
+-- Create analysis_history table with correct UUID types
 CREATE TABLE IF NOT EXISTS public.analysis_history (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -23,11 +30,13 @@ CREATE TABLE IF NOT EXISTS public.analysis_history (
   severity_counts JSONB NOT NULL DEFAULT '{"Critical": 0, "Major": 0, "Minor": 0}'::jsonb,
   confirmed_count INTEGER NOT NULL DEFAULT 0,
   rejected_count INTEGER NOT NULL DEFAULT 0,
+  workflow_status TEXT DEFAULT 'draft',
+  shared_report_id UUID, -- Fixed: Changed from TEXT to UUID
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create analysis_errors table
+-- Create analysis_errors table with correct UUID types
 CREATE TABLE IF NOT EXISTS public.analysis_errors (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   history_entry_id UUID REFERENCES public.analysis_history(id) ON DELETE CASCADE NOT NULL,
@@ -120,13 +129,7 @@ CREATE POLICY "Users can delete own analysis errors" ON public.analysis_errors
     )
   );
 
--- Grant necessary permissions
-GRANT USAGE ON SCHEMA public TO anon, authenticated;
-GRANT ALL ON public.profiles TO anon, authenticated;
-GRANT ALL ON public.analysis_history TO anon, authenticated;
-GRANT ALL ON public.analysis_errors TO anon, authenticated;
-
--- Create a function to handle profile creation (will be called from the app)
+-- Create function to automatically create profile on user signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -134,24 +137,125 @@ BEGIN
   VALUES (
     NEW.id,
     NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-    COALESCE(NEW.raw_user_meta_data->>'avatar_url', '')
+    NEW.raw_user_meta_data->>'full_name',
+    NEW.raw_user_meta_data->>'avatar_url'
   );
   RETURN NEW;
-EXCEPTION
-  WHEN unique_violation THEN
-    -- Profile already exists, just return
-    RETURN NEW;
-  WHEN OTHERS THEN
-    -- Log the error but don't fail the signup
-    RAISE LOG 'Error creating profile for user %: %', NEW.id, SQLERRM;
-    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Note: The trigger will be created automatically by Supabase
--- If you need to create it manually, you can do it through the dashboard
--- or use this command (but it might still give permission errors):
--- CREATE TRIGGER on_auth_user_created
---   AFTER INSERT ON auth.users
---   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+-- Create trigger to call the function on user signup
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Create shared_reports table for better tracking of shared reports
+CREATE TABLE IF NOT EXISTS public.shared_reports (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  history_entry_id UUID REFERENCES public.analysis_history(id) ON DELETE CASCADE NOT NULL,
+  creator_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  workflow_status TEXT NOT NULL DEFAULT 'shared',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create shared_report_reviewers table to track who has access to shared reports
+CREATE TABLE IF NOT EXISTS public.shared_report_reviewers (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  shared_report_id UUID REFERENCES public.shared_reports(id) ON DELETE CASCADE NOT NULL,
+  reviewer_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  reviewer_email TEXT NOT NULL,
+  reviewer_name TEXT,
+  role TEXT NOT NULL DEFAULT 'reviewer',
+  invited_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  last_viewed_at TIMESTAMP WITH TIME ZONE,
+  completed_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(shared_report_id, reviewer_id)
+);
+
+-- Create shared_report_decisions table to track decisions made on shared reports
+CREATE TABLE IF NOT EXISTS public.shared_report_decisions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  shared_report_id UUID REFERENCES public.shared_reports(id) ON DELETE CASCADE NOT NULL,
+  error_id INTEGER NOT NULL,
+  accepted BOOLEAN NOT NULL,
+  rejected BOOLEAN NOT NULL,
+  decided_by TEXT NOT NULL,
+  decided_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  comment TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(shared_report_id, error_id)
+);
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_shared_reports_history_entry_id ON public.shared_reports(history_entry_id);
+CREATE INDEX IF NOT EXISTS idx_shared_reports_creator_id ON public.shared_reports(creator_id);
+CREATE INDEX IF NOT EXISTS idx_shared_report_reviewers_shared_report_id ON public.shared_report_reviewers(shared_report_id);
+CREATE INDEX IF NOT EXISTS idx_shared_report_reviewers_reviewer_id ON public.shared_report_reviewers(reviewer_id);
+CREATE INDEX IF NOT EXISTS idx_shared_report_decisions_shared_report_id ON public.shared_report_decisions(shared_report_id);
+
+-- Enable RLS on shared report tables
+ALTER TABLE public.shared_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shared_report_reviewers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shared_report_decisions ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies for shared_reports
+CREATE POLICY "Users can view shared reports they created" ON public.shared_reports
+  FOR SELECT USING (auth.uid() = creator_id);
+
+CREATE POLICY "Users can insert shared reports" ON public.shared_reports
+  FOR INSERT WITH CHECK (auth.uid() = creator_id);
+
+CREATE POLICY "Users can update shared reports they created" ON public.shared_reports
+  FOR UPDATE USING (auth.uid() = creator_id);
+
+-- Create RLS policies for shared_report_reviewers
+CREATE POLICY "Users can view reviewers for reports they created" ON public.shared_report_reviewers
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports 
+      WHERE id = shared_report_reviewers.shared_report_id 
+      AND creator_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert reviewers" ON public.shared_report_reviewers
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports 
+      WHERE id = shared_report_reviewers.shared_report_id 
+      AND creator_id = auth.uid()
+    )
+  );
+
+-- Create RLS policies for shared_report_decisions
+CREATE POLICY "Users can view decisions for reports they created" ON public.shared_report_decisions
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports 
+      WHERE id = shared_report_decisions.shared_report_id 
+      AND creator_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert decisions" ON public.shared_report_decisions
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports 
+      WHERE id = shared_report_decisions.shared_report_id 
+      AND creator_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update decisions" ON public.shared_report_decisions
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports 
+      WHERE id = shared_report_decisions.shared_report_id 
+      AND creator_id = auth.uid()
+    )
+  );

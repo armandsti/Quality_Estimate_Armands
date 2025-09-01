@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
-import { HistoryEntry, Severity } from '../types';
-import { HistoryIcon, DocumentIcon, CalendarIcon, AnalyzeIcon, ShareIcon, TrashIcon } from './Icons';
+import { HistoryEntry, Severity, WorkflowStatus, UserRole } from '../types';
+import { HistoryIcon, DocumentIcon, CalendarIcon, AnalyzeIcon, ShareIcon, TrashIcon, CheckCircleIcon } from './Icons';
 import { ShareModal } from './ShareModal';
+import { StatisticsPanel } from './StatisticsPanel';
 
 interface HistoryPageProps {
   history: HistoryEntry[];
@@ -12,6 +13,7 @@ interface HistoryPageProps {
   onStartNew: () => void;
   hasActiveReport: boolean;
   onReturnToResults: () => void;
+  onSyncSharedReportStatus?: (historyEntryId: string) => void;
 }
 
 const SeverityPill: React.FC<{ label: string, count: number, color: string }> = ({ label, count, color }) => {
@@ -23,13 +25,22 @@ const SeverityPill: React.FC<{ label: string, count: number, color: string }> = 
     );
 };
 
-export const HistoryPage: React.FC<HistoryPageProps> = ({ history, onViewReport, onClearHistory, onDeleteEntry, onStartNew, hasActiveReport, onReturnToResults }) => {
+export const HistoryPage: React.FC<HistoryPageProps> = ({ history, onViewReport, onClearHistory, onDeleteEntry, onStartNew, hasActiveReport, onReturnToResults, onSyncSharedReportStatus }) => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [selectedEntryForSharing, setSelectedEntryForSharing] = useState<HistoryEntry | null>(null);
 
   const handleOpenShareModal = (entry: HistoryEntry) => {
     setSelectedEntryForSharing(entry);
     setIsShareModalOpen(true);
+  };
+
+  const handleViewReport = (entry: HistoryEntry) => {
+    console.log('View Report button clicked in HistoryPage for entry:', entry.id);
+    // Sync shared report status before viewing
+    if (onSyncSharedReportStatus) {
+      onSyncSharedReportStatus(entry.id);
+    }
+    onViewReport(entry);
   };
 
   const handleCloseShareModal = () => {
@@ -125,7 +136,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ history, onViewReport,
                     </div>
                     <div className="flex-shrink-0 flex flex-col items-stretch gap-2">
                         <button
-                            onClick={() => onViewReport(entry)}
+                            onClick={() => handleViewReport(entry)}
                             className="px-4 py-2 text-sm font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700"
                         >
                             View Report
@@ -149,33 +160,63 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ history, onViewReport,
                   </div>
 
                   {entry.errorCount > 0 && (
-                     <div className="mt-3 pt-3 border-t border-slate-200 flex items-center gap-4 text-xs">
-                        <div className="flex-grow flex items-center gap-2">
-                            <span className="font-semibold text-slate-600">Progress:</span>
-                            <div className="w-full bg-slate-200 rounded-full h-2">
-                                <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${progress}%` }}></div>
+                     <div className="mt-3 pt-3 border-t border-slate-200 space-y-3">
+                        {/* Workflow Status */}
+                        {entry.workflowStatus && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-slate-600">Status:</span>
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              entry.workflowStatus === WorkflowStatus.Completed
+                                ? 'bg-green-100 text-green-700'
+                                : entry.workflowStatus === WorkflowStatus.InReview
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-indigo-100 text-indigo-700'
+                            }`}>
+                              {entry.workflowStatus.replace('_', ' ').toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Progress Bar */}
+                        <div className="flex items-center gap-4 text-xs">
+                            <div className="flex-grow flex items-center gap-2">
+                                <span className="font-semibold text-slate-600">Progress:</span>
+                                <div className="w-full bg-slate-200 rounded-full h-2">
+                                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${progress}%` }}></div>
+                                </div>
+                                <span className="font-bold text-slate-700 w-10 text-right">{progress}%</span>
                             </div>
-                            <span className="font-bold text-slate-700 w-10 text-right">{progress}%</span>
-                        </div>
-                        <div className="flex-shrink-0 flex gap-4">
-                            <span className="font-semibold text-green-600">Accepted: {confirmed}</span>
-                            <span className="font-semibold text-red-600">Rejected: {rejected}</span>
+                            <div className="flex-shrink-0 flex gap-4">
+                                <span className="font-semibold text-green-600">Accepted: {confirmed}</span>
+                                <span className="font-semibold text-red-600">Rejected: {rejected}</span>
+                            </div>
                         </div>
                     </div>
                   )}
 
-                  {/* Viewers/Editors Information */}
-                  {entry.viewers && entry.viewers.length > 0 && (
+                  {/* Reviewers Information */}
+                  {entry.sharedWith && entry.sharedWith.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-slate-200">
-                          <div className="text-xs text-slate-600 mb-1">
-                              <span className="font-semibold">Viewed by:</span>
+                          <div className="text-xs text-slate-600 mb-2">
+                              <span className="font-semibold">Shared with:</span>
                           </div>
                           <div className="flex flex-wrap gap-1">
-                              {entry.viewers.map((viewer, index) => (
-                                  <span key={index} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                                      {viewer.name || viewer.email}
-                                      <span className="ml-1 text-green-600">
-                                          ({new Date(viewer.viewedAt).toLocaleDateString()})
+                              {entry.sharedWith.map((reviewer, index) => (
+                                  <span key={index} className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${
+                                      reviewer.completedAt
+                                          ? 'bg-green-100 text-green-700'
+                                          : reviewer.lastViewedAt
+                                          ? 'bg-blue-100 text-blue-700'
+                                          : 'bg-gray-100 text-gray-600'
+                                  }`}>
+                                      {reviewer.name || reviewer.email}
+                                      {reviewer.completedAt && <CheckCircleIcon className="h-3 w-3" />}
+                                      <span className="ml-1">
+                                          ({reviewer.completedAt
+                                              ? 'Completed'
+                                              : reviewer.lastViewedAt
+                                              ? 'Viewed'
+                                              : 'Invited'})
                                       </span>
                                   </span>
                               ))}
@@ -218,12 +259,18 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({ history, onViewReport,
       )}
 
       {selectedEntryForSharing && (
-        <ShareModal 
+        <ShareModal
             isOpen={isShareModalOpen}
             onClose={handleCloseShareModal}
             errors={selectedEntryForSharing.errors}
+            sourceFile={new File([], selectedEntryForSharing.sourceFileName, {type: "text/plain"})}
+            targetFile={selectedEntryForSharing.targetFileName ? new File([], selectedEntryForSharing.targetFileName, {type: "text/plain"}) : undefined}
+            historyEntryId={selectedEntryForSharing.id}
         />
       )}
+      
+      {/* Statistics Panel at the bottom */}
+      <StatisticsPanel />
     </div>
   );
 };

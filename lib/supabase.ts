@@ -29,5 +29,8 @@ console.log('Supabase client created successfully');
 export const TABLES = {
   PROFILES: 'profiles',
   ANALYSIS_HISTORY: 'analysis_history',
-  ANALYSIS_ERRORS: 'analysis_errors'
+  ANALYSIS_ERRORS: 'analysis_errors',
+  SHARED_REPORTS: 'shared_reports',
+  SHARED_REPORT_REVIEWERS: 'shared_report_reviewers',
+  SHARED_REPORT_DECISIONS: 'shared_report_decisions'
 } as const

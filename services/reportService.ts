@@ -1,4 +1,4 @@
-import { QAError } from '../types';
+import { QAError, SharedReportData, WorkflowStatus, UserRole } from '../types';
 import saveAs from 'file-saver';
 import JSZip from 'jszip';
 
@@ -85,9 +85,7 @@ export const exportToDocx = async (errors: QAError[], sourceFile?: File, targetF
 
 // Generate a unique report ID
 function generateReportId(): string {
-  const timestamp = Date.now().toString(36);
-  const randomStr = Math.random().toString(36).substring(2, 8);
-  return `report_${timestamp}_${randomStr}`;
+  return crypto.randomUUID(); // Use proper UUID instead of timestamp-based ID
 }
 
 // Generate a shareable link for a QA report
@@ -96,24 +94,102 @@ export async function generateShareableLink(
   sourceFile?: File,
   targetFile?: File,
   metadata?: any,
-  creator?: any
+  creator?: any,
+  historyEntryId?: string
 ): Promise<string> {
   try {
+    console.log('generateShareableLink called with:', {
+      errorsCount: errors.length,
+      sourceFile: sourceFile?.name,
+      targetFile: targetFile?.name,
+      metadata,
+      creator,
+      historyEntryId
+    });
+
     const reportId = generateReportId();
-    const reportData = {
+    console.log('Generated report ID:', reportId);
+
+    // Convert creator's decisions from errors array to decisions object
+    const decisions: Record<string, any> = {};
+    errors.forEach(error => {
+      if (error.resolved || error.rejected) {
+        decisions[error.id.toString()] = {
+          errorId: error.id.toString(),
+          accepted: error.resolved || false,
+          rejected: error.rejected || false,
+          decidedBy: creator?.name || creator?.email || 'Creator',
+          decidedAt: new Date().toISOString(),
+          comment: undefined
+        };
+      }
+    });
+
+    // If this is a shared report being re-shared, include existing decisions and latest suggestion edits
+    if (historyEntryId) {
+      const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+      const existingSharedReportId = Object.keys(storedReports).find(key => 
+        storedReports[key].historyEntryId === historyEntryId
+      );
+      
+      if (existingSharedReportId) {
+        const existingReport = storedReports[existingSharedReportId];
+        if (existingReport.decisions) {
+          // Merge existing decisions with new ones (existing decisions take precedence)
+          Object.assign(decisions, existingReport.decisions);
+          console.log('Merged existing decisions from shared report:', existingReport.decisions);
+        }
+        
+        // Merge latest suggestion edits from existing report
+        if (existingReport.errors) {
+          errors = errors.map(error => {
+            const existingError = existingReport.errors.find((e: any) => e.id === error.id);
+            if (existingError) {
+              return {
+                ...error,
+                suggestedCorrection: existingError.suggestedCorrection || error.suggestedCorrection,
+                suggestionHighlight: existingError.suggestionHighlight || error.suggestionHighlight
+              };
+            }
+            return error;
+          });
+          console.log('Merged latest suggestion edits from existing report');
+        }
+      }
+    }
+
+    console.log('Final decisions object:', decisions);
+
+    // Update errors array with current decisions
+    const updatedErrors = errors.map(error => {
+      const decision = decisions[error.id.toString()];
+      if (decision) {
+        return {
+          ...error,
+          resolved: decision.accepted || false,
+          rejected: decision.rejected || false
+        };
+      }
+      return error;
+    });
+
+    const reportData: SharedReportData = {
       id: reportId,
+      historyEntryId: historyEntryId || reportId, // Link back to history entry
       timestamp: new Date().toISOString(),
-      errors: errors,
+      errors: updatedErrors, // Use updated errors with decisions
       sourceFileName: sourceFile?.name || 'Unknown',
       targetFileName: targetFile?.name || 'Unknown',
       metadata: metadata || {},
+      workflowStatus: WorkflowStatus.Shared,
       creator: creator || {
         id: 'unknown',
         email: 'unknown@example.com',
         name: 'Unknown User'
       },
+      reviewers: [], // Will be populated when shared with specific users
       viewers: [],
-      decisions: {}, // Initialize decisions object
+      decisions: decisions, // Include all decisions
       summary: {
         totalIssues: errors.length,
         criticalCount: errors.filter(e => e.severity === 'Critical').length,
@@ -121,11 +197,28 @@ export async function generateShareableLink(
         minorCount: errors.filter(e => e.severity === 'Minor').length,
       }
     };
+
+    console.log('Report data created with decisions:', reportData);
+
+    // Store in localStorage for the creator's browser
     const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
     storedReports[reportId] = reportData;
     localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    console.log('Stored in localStorage');
+
+    // Note: History updates are handled by React state management in App.tsx
+    // This prevents conflicts with localStorage and ensures data consistency
+    if (historyEntryId) {
+      console.log('History entry ID provided:', historyEntryId, '- updates will be handled by React state');
+    }
+
+    // Also encode the data in the URL for cross-browser sharing
     const baseUrl = window.location.origin;
-    const shareableUrl = `${baseUrl}/shared-report/${reportId}`;
+    // Use a Unicode-safe encoding method instead of btoa()
+    const encodedData = encodeURIComponent(JSON.stringify(reportData));
+    const shareableUrl = `${baseUrl}/shared-report/${reportId}?data=${encodedData}`;
+
+    console.log('Generated shareable URL:', shareableUrl);
     return shareableUrl;
   } catch (error) {
     console.error('Failed to generate shareable link:', error);
@@ -133,14 +226,70 @@ export async function generateShareableLink(
   }
 }
 
-export function getSharedReport(reportId: string): any | null {
+export function getSharedReport(reportId: string, userId?: string): SharedReportData | null {
   try {
+    // First, try to get from localStorage (for the creator's browser)
     const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
-    return storedReports[reportId] || null;
+    const storedReport = storedReports[reportId];
+
+    if (storedReport) {
+      // Check if user has access to this report
+      if (userId && !hasAccessToReport(storedReport, userId)) {
+        console.log('User does not have access to this report');
+        return null;
+      }
+      return storedReport;
+    }
+
+    // If not in localStorage, try to get from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const encodedData = urlParams.get('data');
+
+    if (encodedData) {
+      try {
+        // Use decodeURIComponent instead of atob for Unicode-safe decoding
+        const decodedData = JSON.parse(decodeURIComponent(encodedData));
+        // Verify the report ID matches
+        if (decodedData.id === reportId) {
+          // Check if user has access to this report
+          if (userId && !hasAccessToReport(decodedData, userId)) {
+            console.log('User does not have access to this report from URL');
+            return null;
+          }
+          return decodedData;
+        }
+      } catch (decodeError) {
+        console.error('Failed to decode URL data:', decodeError);
+      }
+    }
+
+    return null;
   } catch (error) {
     console.error('Failed to retrieve shared report:', error);
     return null;
   }
+}
+
+// Helper function to check if a user has access to a shared report
+function hasAccessToReport(report: SharedReportData, userId: string): boolean {
+  // Creator always has access
+  if (report.creator.id === userId) {
+    return true;
+  }
+
+  // Check if user is in the reviewers list
+  const isReviewer = report.reviewers?.some(reviewer => reviewer.id === userId);
+  if (isReviewer) {
+    return true;
+  }
+
+  // Check legacy viewers list for backward compatibility
+  const isViewer = report.viewers?.some(viewer => viewer.id === userId);
+  if (isViewer) {
+    return true;
+  }
+
+  return false;
 }
 
 export async function updateReportViewers(reportId: string, viewer: {
@@ -154,6 +303,7 @@ export async function updateReportViewers(reportId: string, viewer: {
     const report = storedReports[reportId];
 
     if (report) {
+      // Update legacy viewers list for backward compatibility
       if (!report.viewers) {
         report.viewers = [];
       }
@@ -163,15 +313,61 @@ export async function updateReportViewers(reportId: string, viewer: {
       } else {
         report.viewers.push(viewer);
       }
+
+      // Also update reviewers list if the viewer is a reviewer
+      if (report.reviewers) {
+        const reviewerIndex = report.reviewers.findIndex((r: any) => r.id === viewer.id);
+        if (reviewerIndex >= 0) {
+          report.reviewers[reviewerIndex].lastViewedAt = viewer.viewedAt;
+        }
+      }
+
       storedReports[reportId] = report;
       localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    }
+
+    // Also update the URL data if it exists
+    const urlParams = new URLSearchParams(window.location.search);
+    const encodedData = urlParams.get('data');
+
+    if (encodedData) {
+      try {
+        const decodedData = JSON.parse(decodeURIComponent(encodedData));
+        if (decodedData.id === reportId) {
+          // Update legacy viewers list
+          if (!decodedData.viewers) {
+            decodedData.viewers = [];
+          }
+          const existingViewerIndex = decodedData.viewers.findIndex((v: any) => v.id === viewer.id);
+          if (existingViewerIndex >= 0) {
+            decodedData.viewers[existingViewerIndex].viewedAt = viewer.viewedAt;
+          } else {
+            decodedData.viewers.push(viewer);
+          }
+
+          // Update reviewers list if the viewer is a reviewer
+          if (decodedData.reviewers) {
+            const reviewerIndex = decodedData.reviewers.findIndex((r: any) => r.id === viewer.id);
+            if (reviewerIndex >= 0) {
+              decodedData.reviewers[reviewerIndex].lastViewedAt = viewer.viewedAt;
+            }
+          }
+
+          // Update the URL with new data
+          const newEncodedData = encodeURIComponent(JSON.stringify(decodedData));
+          const newUrl = `${window.location.pathname}?data=${newEncodedData}`;
+          window.history.replaceState({}, '', newUrl);
+        }
+      } catch (decodeError) {
+        console.error('Failed to update URL viewer data:', decodeError);
+      }
     }
   } catch (error) {
     console.error('Failed to update report viewers:', error);
   }
 }
 
-export async function updateReportDecisions(reportId: string, errorId: number, decision: {
+export async function updateReportDecisions(reportId: string, errorId: string, decision: {
   accepted: boolean;
   rejected: boolean;
   decidedBy: string;
@@ -189,9 +385,346 @@ export async function updateReportDecisions(reportId: string, errorId: number, d
       report.decisions[errorId] = decision;
       storedReports[reportId] = report;
       localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+      
+      // Sync changes back to original shared report
+      await syncChangesToOriginalReport(reportId, report);
+    }
+
+    // Also update the URL data if it exists
+    const urlParams = new URLSearchParams(window.location.search);
+    const encodedData = urlParams.get('data');
+
+    if (encodedData) {
+      try {
+        // Use decodeURIComponent instead of atob for Unicode-safe decoding
+        const decodedData = JSON.parse(decodeURIComponent(encodedData));
+        if (decodedData.id === reportId) {
+          if (!decodedData.decisions) {
+            decodedData.decisions = {};
+          }
+          decodedData.decisions[errorId] = decision;
+
+          // Update the URL with new data
+          const newEncodedData = encodeURIComponent(JSON.stringify(decodedData));
+          const newUrl = `${window.location.pathname}?data=${newEncodedData}`;
+          window.history.replaceState({}, '', newUrl);
+        }
+      } catch (decodeError) {
+        console.error('Failed to update URL data:', decodeError);
+      }
     }
   } catch (error) {
     console.error('Failed to update report decisions:', error);
+  }
+}
+
+// Sync creator decisions to shared reports
+export async function syncCreatorDecisionsToSharedReport(historyEntryId: string, errorId: string, resolved: boolean, rejected: boolean): Promise<void> {
+  try {
+    // Find ALL shared reports for this history entry (all levels in the chain)
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    const allRelatedReportIds = Object.keys(storedReports).filter(key => 
+      storedReports[key].historyEntryId === historyEntryId
+    );
+    
+    console.log(`Found ${allRelatedReportIds.length} related reports for creator sync: ${historyEntryId}`);
+    
+    // Update ALL reports in the chain with the creator's decision
+    allRelatedReportIds.forEach(reportId => {
+      const report = storedReports[reportId];
+      if (!report.decisions) {
+        report.decisions = {};
+      }
+      
+      // Update the decision
+      report.decisions[errorId] = {
+        errorId: errorId.toString(),
+        accepted: resolved,
+        rejected: rejected,
+        decidedBy: 'Creator', // We'll get the actual creator name from the report
+        decidedAt: new Date().toISOString(),
+        comment: undefined
+      };
+      
+      storedReports[reportId] = report;
+      console.log(`Synced creator decision to report ${reportId}: error ${errorId} - resolved: ${resolved}, rejected: ${rejected}`);
+    });
+    
+    localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    console.log(`Successfully synced creator decision to all ${allRelatedReportIds.length} related reports`);
+  } catch (error) {
+    console.error('Failed to sync creator decisions to shared reports:', error);
+  }
+}
+
+// Sync shared decisions back to creator's view
+export async function syncSharedDecisionsToCreator(historyEntryId: string): Promise<Record<string, any>> {
+  try {
+    // Find the shared report for this history entry
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    const sharedReportId = Object.keys(storedReports).find(key => storedReports[key].historyEntryId === historyEntryId);
+    
+    if (sharedReportId) {
+      const report = storedReports[sharedReportId];
+      if (report.decisions) {
+        console.log(`Syncing shared decisions to creator for history ${historyEntryId}:`, report.decisions);
+        return report.decisions;
+      }
+    }
+    return {};
+  } catch (error) {
+    console.error('Failed to sync shared decisions to creator:', error);
+    return {};
+  }
+}
+
+// Track editor decisions and update shared report with editor info
+export async function trackEditorDecision(reportId: string, errorId: string, decision: {
+  accepted: boolean;
+  rejected: boolean;
+  decidedBy: string;
+  decidedAt: string;
+  comment?: string;
+}, editorInfo: {
+  id: string;
+  email: string;
+  name?: string;
+}): Promise<void> {
+  try {
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    const report = storedReports[reportId];
+
+    if (report) {
+      // Update decisions
+      if (!report.decisions) {
+        report.decisions = {};
+      }
+      report.decisions[errorId] = decision;
+
+      // Add or update editor in reviewers list
+      if (!report.reviewers) {
+        report.reviewers = [];
+      }
+
+      const existingReviewerIndex = report.reviewers.findIndex((r: any) => r.id === editorInfo.id);
+      if (existingReviewerIndex >= 0) {
+        // Update existing reviewer
+        report.reviewers[existingReviewerIndex] = {
+          ...report.reviewers[existingReviewerIndex],
+          lastViewedAt: new Date().toISOString(),
+          lastDecisionAt: new Date().toISOString()
+        };
+      } else {
+        // Add new reviewer
+        report.reviewers.push({
+          id: editorInfo.id,
+          email: editorInfo.email,
+          name: editorInfo.name || editorInfo.email,
+          role: 'reviewer',
+          invitedAt: new Date().toISOString(),
+          lastViewedAt: new Date().toISOString(),
+          lastDecisionAt: new Date().toISOString()
+        });
+      }
+
+      storedReports[reportId] = report;
+      localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+
+      // Sync changes back to original shared report if this is a re-shared report
+      await syncChangesToOriginalReport(reportId, report);
+
+      console.log(`Tracked editor decision for report ${reportId}:`, {
+        editor: editorInfo,
+        decision: decision,
+        reviewers: report.reviewers
+      });
+    }
+  } catch (error) {
+    console.error('Failed to track editor decision:', error);
+  }
+}
+
+// Sync changes back to ALL levels in the sharing chain
+export async function syncChangesToOriginalReport(currentReportId: string, updatedReport: SharedReportData): Promise<void> {
+  try {
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    
+    // Find ALL reports with the same historyEntryId (all levels in the chain)
+    const allRelatedReportIds = Object.keys(storedReports).filter(key => {
+      const report = storedReports[key];
+      return report.historyEntryId === updatedReport.historyEntryId;
+    });
+
+    console.log(`Found ${allRelatedReportIds.length} related reports for historyEntryId: ${updatedReport.historyEntryId}`);
+
+    // Update ALL reports in the chain with the latest changes
+    allRelatedReportIds.forEach(reportId => {
+      if (reportId !== currentReportId) { // Don't update the current report
+        const report = storedReports[reportId];
+        console.log(`Syncing changes from ${currentReportId} to report ${reportId}`);
+        
+        // Update the report with the latest changes
+        report.decisions = { ...report.decisions, ...updatedReport.decisions };
+        report.errors = updatedReport.errors;
+        report.reviewers = updatedReport.reviewers;
+        report.workflowStatus = updatedReport.workflowStatus;
+        
+        storedReports[reportId] = report;
+        console.log(`Successfully synced changes to report ${reportId}`);
+      }
+    });
+
+    localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    console.log(`Successfully synced changes to all ${allRelatedReportIds.length - 1} related reports`);
+  } catch (error) {
+    console.error('Failed to sync changes to related reports:', error);
+  }
+}
+
+export async function addReviewerToReport(reportId: string, reviewer: {
+  id: string;
+  email: string;
+  name?: string;
+  role: UserRole;
+}): Promise<void> {
+  try {
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    const report = storedReports[reportId];
+
+    if (report) {
+      if (!report.reviewers) {
+        report.reviewers = [];
+      }
+
+      // Check if reviewer already exists
+      const existingIndex = report.reviewers.findIndex(r => r.id === reviewer.id);
+      if (existingIndex >= 0) {
+        // Update existing reviewer
+        report.reviewers[existingIndex] = {
+          ...report.reviewers[existingIndex],
+          ...reviewer,
+          invitedAt: report.reviewers[existingIndex].invitedAt // Preserve original invite time
+        };
+      } else {
+        // Add new reviewer
+        report.reviewers.push({
+          ...reviewer,
+          invitedAt: new Date().toISOString()
+        });
+      }
+
+      storedReports[reportId] = report;
+      localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    }
+  } catch (error) {
+    console.error('Failed to add reviewer to report:', error);
+  }
+}
+
+export async function updateReportWorkflowStatus(reportId: string, status: WorkflowStatus): Promise<void> {
+  try {
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    const report = storedReports[reportId];
+
+    if (report) {
+      report.workflowStatus = status;
+      storedReports[reportId] = report;
+      localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    }
+
+    // Also update the URL data if it exists
+    const urlParams = new URLSearchParams(window.location.search);
+    const encodedData = urlParams.get('data');
+
+    if (encodedData) {
+      try {
+        const decodedData = JSON.parse(decodeURIComponent(encodedData));
+        if (decodedData.id === reportId) {
+          decodedData.workflowStatus = status;
+
+          // Update the URL with new data
+          const newEncodedData = encodeURIComponent(JSON.stringify(decodedData));
+          const newUrl = `${window.location.pathname}?data=${newEncodedData}`;
+          window.history.replaceState({}, '', newUrl);
+        }
+      } catch (decodeError) {
+        console.error('Failed to update URL workflow status:', decodeError);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to update report workflow status:', error);
+  }
+}
+
+export async function markReportCompleted(reportId: string, userId: string): Promise<void> {
+  try {
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    const report = storedReports[reportId];
+
+    if (report) {
+      // Update reviewer's completion status
+      if (report.reviewers) {
+        const reviewerIndex = report.reviewers.findIndex(r => r.id === userId);
+        if (reviewerIndex >= 0) {
+          report.reviewers[reviewerIndex].completedAt = new Date().toISOString();
+          report.reviewers[reviewerIndex].lastViewedAt = new Date().toISOString();
+        }
+      }
+
+      // Update workflow status to completed
+      report.workflowStatus = WorkflowStatus.Completed;
+      storedReports[reportId] = report;
+      localStorage.setItem('sharedReports', JSON.stringify(storedReports));
+    }
+
+    // Also update the URL data if it exists
+    const urlParams = new URLSearchParams(window.location.search);
+    const encodedData = urlParams.get('data');
+
+    if (encodedData) {
+      try {
+        const decodedData = JSON.parse(decodeURIComponent(encodedData));
+        if (decodedData.id === reportId) {
+          // Update reviewer's completion status
+          if (decodedData.reviewers) {
+            const reviewerIndex = decodedData.reviewers.findIndex((r: any) => r.id === userId);
+            if (reviewerIndex >= 0) {
+              decodedData.reviewers[reviewerIndex].completedAt = new Date().toISOString();
+              decodedData.reviewers[reviewerIndex].lastViewedAt = new Date().toISOString();
+            }
+          }
+          decodedData.workflowStatus = WorkflowStatus.Completed;
+
+          // Update the URL with new data
+          const newEncodedData = encodeURIComponent(JSON.stringify(decodedData));
+          const newUrl = `${window.location.pathname}?data=${newEncodedData}`;
+          window.history.replaceState({}, '', newUrl);
+        }
+      } catch (decodeError) {
+        console.error('Failed to update URL completion status:', decodeError);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to mark report as completed:', error);
+  }
+}
+
+export function getUserReports(userId: string): SharedReportData[] {
+  try {
+    const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
+    const userReports: SharedReportData[] = [];
+
+    for (const reportId in storedReports) {
+      const report = storedReports[reportId];
+      if (hasAccessToReport(report, userId)) {
+        userReports.push(report);
+      }
+    }
+
+    return userReports;
+  } catch (error) {
+    console.error('Failed to get user reports:', error);
+    return [];
   }
 }
 
@@ -368,7 +901,7 @@ export const exportToCorrectedDocx = async (
         }
         
         // Sort errors by their ID to apply them in the order they appear in the document.
-        const sortedErrors = [...errorsToApply].sort((a, b) => a.id - b.id);
+        const sortedErrors = [...errorsToApply].sort((a, b) => a.id.localeCompare(b.id));
 
         let totalReplacements = 0;
         

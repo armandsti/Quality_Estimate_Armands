@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { TranslayLogo } from '../Icons'
 
 export const AuthForm: React.FC = () => {
@@ -10,7 +11,23 @@ export const AuthForm: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   
-  const { signIn, signUp, signInWithGoogle } = useAuth()
+  const { signIn, signUp, signInWithGoogle, user } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  // Check for redirect parameter
+  useEffect(() => {
+    if (user) {
+      const urlParams = new URLSearchParams(location.search)
+      const redirectTo = urlParams.get('redirect')
+      
+      if (redirectTo) {
+        navigate(redirectTo, { replace: true })
+      } else {
+        navigate('/', { replace: true })
+      }
+    }
+  }, [user, navigate, location])
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault()

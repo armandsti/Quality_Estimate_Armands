@@ -1,14 +1,15 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { QAError, Severity } from '../types';
+import { updateGlobalStatistics } from './StatisticsPanel';
 import { AcceptIcon, RejectIcon, PencilIcon, UndoIcon } from './Icons';
 
 interface ResultsListProps {
   errors: QAError[];
-  onApplyCorrection: (errorId: number) => void;
-  onRejectCorrection: (errorId: number) => void;
-  onSuggestionEdit: (errorId: number, newSuggestion: string) => void;
-  onRevertCorrection: (errorId: number) => void;
+  onApplyCorrection: (errorId: string) => void;
+  onRejectCorrection: (errorId: string) => void;
+  onSuggestionEdit: (errorId: string, newSuggestion: string) => void;
+  onRevertCorrection: (errorId: string) => void;
 }
 
 const severityStyles: { [key in Severity]: { badge: string } } = {
@@ -52,12 +53,12 @@ const Highlight: React.FC<{ text: string; highlight?: string; bgClass: string; }
         // Check if the current part is one of the highlights
         if (part && highlightParts.includes(part.toLowerCase())) {
           return (
-            <mark key={i} className={`px-1 rounded ${bgClass}`}>
+            <mark key={`highlight-${i}-${part}`} className={`px-1 rounded ${bgClass}`}>
               {part}
             </mark>
           );
         }
-        return part;
+        return <span key={`text-${i}-${part}`}>{part}</span>;
       })}
     </>
   );
@@ -65,7 +66,7 @@ const Highlight: React.FC<{ text: string; highlight?: string; bgClass: string; }
 
 
 export const ResultsList: React.FC<ResultsListProps> = ({ errors, onApplyCorrection, onRejectCorrection, onSuggestionEdit, onRevertCorrection }) => {
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -84,6 +85,9 @@ export const ResultsList: React.FC<ResultsListProps> = ({ errors, onApplyCorrect
     if (!error.resolved && !error.rejected) {
       setEditingId(error.id);
       setEditingText(error.suggestedCorrection);
+      
+      // Update global statistics when edit button is clicked
+      updateGlobalStatistics('edit_clicked');
     }
   };
 
@@ -183,7 +187,7 @@ export const ResultsList: React.FC<ResultsListProps> = ({ errors, onApplyCorrect
                                         <Highlight text={error.suggestedCorrection} highlight={error.suggestionHighlight} bgClass="bg-green-300/60 text-green-900" />
                                     </span>
                                 </div>
-                                {!error.resolved && !error.rejected && (
+                                {(!error.resolved && !error.rejected) && (
                                     <div className="flex-shrink-0 text-slate-400 group-hover:text-blue-600 transition-colors" title="Edit suggestion">
                                         <PencilIcon />
                                     </div>
@@ -202,7 +206,10 @@ export const ResultsList: React.FC<ResultsListProps> = ({ errors, onApplyCorrect
                    {!error.resolved && !error.rejected ? (
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => onApplyCorrection(error.id)}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onApplyCorrection(error.id);
+                            }}
                             className="h-8 w-8 flex items-center justify-center rounded-full bg-green-100 text-green-600 hover:bg-green-200 hover:text-green-700 transition-colors"
                             aria-label="Accept suggestion"
                             title="Accept suggestion"
@@ -210,7 +217,10 @@ export const ResultsList: React.FC<ResultsListProps> = ({ errors, onApplyCorrect
                             <AcceptIcon className="h-5 w-5" />
                         </button>
                         <button
-                            onClick={() => onRejectCorrection(error.id)}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onRejectCorrection(error.id);
+                            }}
                             className="h-8 w-8 flex items-center justify-center rounded-full bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-700 transition-colors"
                             aria-label="Reject suggestion"
                             title="Reject suggestion"

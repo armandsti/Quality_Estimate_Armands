@@ -205,10 +205,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Google OAuth signin
   const signInWithGoogle = async () => {
+    // Get current redirect parameter if it exists
+    const urlParams = new URLSearchParams(window.location.search)
+    const redirectTo = urlParams.get('redirect')
+    
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://qa.translay.io/auth/callback'
+        redirectTo: redirectTo 
+          ? `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`
+          : `${window.location.origin}/auth/callback`
       }
     })
     if (error) throw error

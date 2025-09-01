@@ -41,7 +41,7 @@ export async function runQAAnalysis(
     
     return (data as any[]).map((error: any, index: number) => ({
       ...error,
-      id: index,
+      id: crypto.randomUUID(),
       resolved: false,
       rejected: false
     }));

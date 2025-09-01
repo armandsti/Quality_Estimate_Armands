@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { TranslayLogo } from '../Icons'
 
@@ -7,20 +7,41 @@ export const AuthCallback: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
+        console.log('AuthCallback: Starting authentication callback...');
+        console.log('AuthCallback: Current location:', window.location.href);
+        console.log('AuthCallback: Location search:', location.search);
+        
         const { data, error } = await supabase.auth.getSession()
         
         if (error) {
+          console.error('AuthCallback: Supabase error:', error);
           throw error
         }
 
         if (data.session) {
-          // Successfully authenticated, redirect to main app
-          navigate('/', { replace: true })
+          console.log('AuthCallback: Session found, user authenticated');
+          
+          // Check if there's a redirect parameter
+          const urlParams = new URLSearchParams(location.search)
+          const redirectTo = urlParams.get('redirect')
+          console.log('AuthCallback: Redirect parameter:', redirectTo);
+          
+          if (redirectTo) {
+            console.log('AuthCallback: Redirecting to:', redirectTo);
+            // Redirect to the specified path
+            navigate(redirectTo, { replace: true })
+          } else {
+            console.log('AuthCallback: No redirect parameter, going to main app');
+            // Successfully authenticated, redirect to main app
+            navigate('/', { replace: true })
+          }
         } else {
+          console.log('AuthCallback: No session, redirecting to login');
           // No session, redirect to login
           navigate('/auth', { replace: true })
         }
@@ -36,7 +57,7 @@ export const AuthCallback: React.FC = () => {
     }
 
     handleAuthCallback()
-  }, [navigate])
+  }, [navigate, location])
 
   if (loading) {
     return (

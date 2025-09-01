@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS public.analysis_history (
   severity_counts JSONB NOT NULL DEFAULT '{"Critical": 0, "Major": 0, "Minor": 0}'::jsonb,
   confirmed_count INTEGER NOT NULL DEFAULT 0,
   rejected_count INTEGER NOT NULL DEFAULT 0,
+  workflow_status TEXT DEFAULT 'draft',
+  shared_report_id TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -144,10 +146,181 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+-- Migration: Add workflow_status and shared_report_id columns to analysis_history
+ALTER TABLE public.analysis_history
+ADD COLUMN IF NOT EXISTS workflow_status TEXT DEFAULT 'draft',
+ADD COLUMN IF NOT EXISTS shared_report_id TEXT;
+
+-- Create shared_reports table for better tracking of shared reports
+CREATE TABLE IF NOT EXISTS public.shared_reports (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  history_entry_id UUID REFERENCES public.analysis_history(id) ON DELETE CASCADE NOT NULL,
+  creator_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  workflow_status TEXT NOT NULL DEFAULT 'shared',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create shared_report_reviewers table to track who has access to shared reports
+CREATE TABLE IF NOT EXISTS public.shared_report_reviewers (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  shared_report_id UUID REFERENCES public.shared_reports(id) ON DELETE CASCADE NOT NULL,
+  reviewer_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  reviewer_email TEXT NOT NULL,
+  reviewer_name TEXT,
+  role TEXT NOT NULL DEFAULT 'reviewer',
+  invited_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  last_viewed_at TIMESTAMP WITH TIME ZONE,
+  completed_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(shared_report_id, reviewer_id)
+);
+
+-- Create shared_report_decisions table to track decisions made on shared reports
+CREATE TABLE IF NOT EXISTS public.shared_report_decisions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  shared_report_id UUID REFERENCES public.shared_reports(id) ON DELETE CASCADE NOT NULL,
+  error_id INTEGER NOT NULL,
+  accepted BOOLEAN NOT NULL,
+  rejected BOOLEAN NOT NULL,
+  decided_by TEXT NOT NULL,
+  decided_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  comment TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(shared_report_id, error_id)
+);
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_shared_reports_history_entry_id ON public.shared_reports(history_entry_id);
+CREATE INDEX IF NOT EXISTS idx_shared_reports_creator_id ON public.shared_reports(creator_id);
+CREATE INDEX IF NOT EXISTS idx_shared_report_reviewers_shared_report_id ON public.shared_report_reviewers(shared_report_id);
+CREATE INDEX IF NOT EXISTS idx_shared_report_reviewers_reviewer_id ON public.shared_report_reviewers(reviewer_id);
+CREATE INDEX IF NOT EXISTS idx_shared_report_decisions_shared_report_id ON public.shared_report_decisions(shared_report_id);
+
+-- Enable Row Level Security on new tables
+ALTER TABLE public.shared_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shared_report_reviewers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shared_report_decisions ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies for shared_reports
+CREATE POLICY "Users can view shared reports they created or are reviewers of" ON public.shared_reports
+  FOR SELECT USING (
+    auth.uid() = creator_id OR
+    EXISTS (
+      SELECT 1 FROM public.shared_report_reviewers
+      WHERE shared_report_id = shared_reports.id
+      AND reviewer_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert shared reports they created" ON public.shared_reports
+  FOR INSERT WITH CHECK (auth.uid() = creator_id);
+
+CREATE POLICY "Users can update shared reports they created" ON public.shared_reports
+  FOR UPDATE USING (auth.uid() = creator_id);
+
+CREATE POLICY "Users can delete shared reports they created" ON public.shared_reports
+  FOR DELETE USING (auth.uid() = creator_id);
+
+-- Create RLS policies for shared_report_reviewers
+CREATE POLICY "Users can view reviewers for reports they have access to" ON public.shared_report_reviewers
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports
+      WHERE id = shared_report_id
+      AND (
+        creator_id = auth.uid() OR
+        EXISTS (
+          SELECT 1 FROM public.shared_report_reviewers as srr
+          WHERE srr.shared_report_id = shared_report_id
+          AND srr.reviewer_id = auth.uid()
+        )
+      )
+    )
+  );
+
+CREATE POLICY "Users can insert reviewers for reports they created" ON public.shared_report_reviewers
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports
+      WHERE id = shared_report_id
+      AND creator_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update reviewer info for reports they have access to" ON public.shared_report_reviewers
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports
+      WHERE id = shared_report_id
+      AND (
+        creator_id = auth.uid() OR
+        reviewer_id = auth.uid()
+      )
+    )
+  );
+
+-- Create RLS policies for shared_report_decisions
+CREATE POLICY "Users can view decisions for reports they have access to" ON public.shared_report_decisions
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports
+      WHERE id = shared_report_id
+      AND (
+        creator_id = auth.uid() OR
+        EXISTS (
+          SELECT 1 FROM public.shared_report_reviewers
+          WHERE shared_report_id = shared_reports.id
+          AND reviewer_id = auth.uid()
+        )
+      )
+    )
+  );
+
+CREATE POLICY "Users can insert decisions for reports they have access to" ON public.shared_report_decisions
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports
+      WHERE id = shared_report_id
+      AND (
+        creator_id = auth.uid() OR
+        EXISTS (
+          SELECT 1 FROM public.shared_report_reviewers
+          WHERE shared_report_id = shared_reports.id
+          AND reviewer_id = auth.uid()
+        )
+      )
+    )
+  );
+
+CREATE POLICY "Users can update decisions for reports they have access to" ON public.shared_report_decisions
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.shared_reports
+      WHERE id = shared_report_id
+      AND (
+        creator_id = auth.uid() OR
+        EXISTS (
+          SELECT 1 FROM public.shared_report_reviewers
+          WHERE shared_report_id = shared_reports.id
+          AND reviewer_id = auth.uid()
+        )
+      )
+    )
+  );
+
 -- Grant necessary permissions
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT ALL ON public.profiles TO anon, authenticated;
 GRANT ALL ON public.analysis_history TO anon, authenticated;
 GRANT ALL ON public.analysis_errors TO anon, authenticated;
+GRANT ALL ON public.shared_reports TO anon, authenticated;
+GRANT ALL ON public.shared_report_reviewers TO anon, authenticated;
+GRANT ALL ON public.shared_report_decisions TO anon, authenticated;
 GRANT USAGE ON SEQUENCE public.analysis_history_id_seq TO anon, authenticated;
 GRANT USAGE ON SEQUENCE public.analysis_errors_id_seq TO anon, authenticated;
+GRANT USAGE ON SEQUENCE public.shared_reports_id_seq TO anon, authenticated;
+GRANT USAGE ON SEQUENCE public.shared_report_reviewers_id_seq TO anon, authenticated;
+GRANT USAGE ON SEQUENCE public.shared_report_decisions_id_seq TO anon, authenticated;

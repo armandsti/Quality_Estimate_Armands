@@ -21,10 +21,12 @@
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
     "mammoth": "^1.10.0",
+    "openai": "^5.16.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

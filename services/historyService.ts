@@ -1,10 +1,11 @@
 import { supabase, TABLES } from '../lib/supabase'
-import { 
-  HistoryEntry, 
-  DatabaseHistoryEntry, 
+import {
+  HistoryEntry,
+  DatabaseHistoryEntry,
   DatabaseAnalysisError,
   QAError,
-  Severity 
+  Severity,
+  WorkflowStatus
 } from '../types'
 
 export class HistoryService {
@@ -39,6 +40,8 @@ export class HistoryService {
         severity_counts: severityCounts,
         confirmed_count: confirmedCount,
         rejected_count: rejectedCount,
+        workflow_status: 'draft' as WorkflowStatus,
+        shared_report_id: null,
       }
 
       const { data: historyData, error: historyError } = await supabase
@@ -113,7 +116,7 @@ export class HistoryService {
         targetFileName: entry.target_file_name,
         errorCount: entry.error_count,
         errors: entry.analysis_errors?.map(error => ({
-          id: parseInt(error.id),
+          id: error.id,
           segmentId: error.segment_id,
           sourceSegment: error.source_segment,
           targetSegment: error.target_segment,
@@ -131,6 +134,8 @@ export class HistoryService {
         severityCounts: entry.severity_counts,
         confirmedCount: entry.confirmed_count,
         rejectedCount: entry.rejected_count,
+        workflowStatus: entry.workflow_status as WorkflowStatus,
+        sharedReportId: entry.shared_report_id,
       }))
     } catch (error) {
       console.error('Error fetching analysis history:', error)
@@ -159,6 +164,70 @@ export class HistoryService {
       }
     } catch (error) {
       console.error('Error updating error status:', error)
+      throw error
+    }
+  }
+
+  // Update workflow status
+  static async updateWorkflowStatus(historyId: string, status: WorkflowStatus): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from(TABLES.ANALYSIS_HISTORY)
+        .update({
+          workflow_status: status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', historyId)
+
+      if (error) {
+        throw new Error(`Failed to update workflow status: ${error.message}`)
+      }
+    } catch (error) {
+      console.error('Error updating workflow status:', error)
+      throw error
+    }
+  }
+
+  // Update shared report ID
+  static async updateSharedReportId(historyId: string, sharedReportId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from(TABLES.ANALYSIS_HISTORY)
+        .update({
+          shared_report_id: sharedReportId,
+          workflow_status: 'shared' as WorkflowStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', historyId)
+
+      if (error) {
+        throw new Error(`Failed to update shared report ID: ${error.message}`)
+      }
+    } catch (error) {
+      console.error('Error updating shared report ID:', error)
+      throw error
+    }
+  }
+
+  // Update history entry with latest data
+  static async updateHistoryEntry(entry: any): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from(TABLES.ANALYSIS_HISTORY)
+        .update({
+          workflow_status: entry.workflowStatus || 'draft',
+          shared_report_id: entry.sharedReportId,
+          confirmed_count: entry.confirmedCount || 0,
+          rejected_count: entry.rejectedCount || 0,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', entry.id)
+
+      if (error) {
+        throw new Error(`Failed to update history entry: ${error.message}`)
+      }
+    } catch (error) {
+      console.error('Error updating history entry:', error)
       throw error
     }
   }

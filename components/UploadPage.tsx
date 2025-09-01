@@ -164,7 +164,7 @@ export const UploadPage: React.FC<UploadPageProps> = ({
                   2. (Optional) Provide a glossary or other references.
                 </p>
                 <p className="mt-1 text-slate-500">
-                  3. Click "Run QA Analysis" to start the process.
+                  3. Click "Run QA Analysis" to start the AI-powered analysis using OpenAI GPT-4o-mini.
                 </p>
                  <p className="mt-4 text-sm text-slate-400 italic">
                   The analysis results will be displayed on the next page.

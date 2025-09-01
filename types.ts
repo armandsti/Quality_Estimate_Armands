@@ -5,6 +5,18 @@ export enum Severity {
   Minor = 'Minor',
 }
 
+export enum WorkflowStatus {
+  Draft = 'draft',
+  Shared = 'shared',
+  InReview = 'in_review',
+  Completed = 'completed',
+}
+
+export enum UserRole {
+  Creator = 'creator',
+  Reviewer = 'reviewer',
+}
+
 export enum ErrorCategory {
   Accuracy = 'Accuracy',
   Linguistic = 'Linguistic',
@@ -16,7 +28,7 @@ export enum ErrorCategory {
 }
 
 export interface QAError {
-  id: number;
+  id: string;
   segmentId?: string;
   sourceSegment: string;
   targetSegment: string;
@@ -46,11 +58,21 @@ export interface HistoryEntry {
   };
   confirmedCount?: number;
   rejectedCount?: number;
+  workflowStatus?: WorkflowStatus;
   creator?: {
     id: string;
     email: string;
     name?: string;
   };
+  sharedWith?: Array<{
+    id: string;
+    email: string;
+    name?: string;
+    role: UserRole;
+    invitedAt: string;
+    lastViewedAt?: string;
+    completedAt?: string;
+  }>;
   viewers?: Array<{
     id: string;
     email: string;
@@ -64,6 +86,7 @@ export interface HistoryEntry {
     decidedAt: string;
     comment?: string;
   }>;
+  sharedReportId?: string; // Links to the shared report for this history entry
 }
 
 // New types for authentication and database
@@ -91,6 +114,44 @@ export interface DatabaseHistoryEntry {
   };
   confirmed_count: number;
   rejected_count: number;
+  workflow_status?: WorkflowStatus;
+  shared_report_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseSharedReport {
+  id: string;
+  history_entry_id: string;
+  creator_id: string;
+  workflow_status: WorkflowStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseSharedReportReviewer {
+  id: string;
+  shared_report_id: string;
+  reviewer_id: string;
+  reviewer_email: string;
+  reviewer_name?: string;
+  role: UserRole;
+  invited_at: string;
+  last_viewed_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseSharedReportDecision {
+  id: string;
+  shared_report_id: string;
+  error_id: number;
+  accepted: boolean;
+  rejected: boolean;
+  decided_by: string;
+  decided_at: string;
+  comment?: string;
   created_at: string;
   updated_at: string;
 }
@@ -122,4 +183,48 @@ export interface AuthUser {
     full_name?: string;
     avatar_url?: string;
   };
+}
+
+export interface SharedReportData {
+  id: string;
+  historyEntryId: string; // Link back to the original history entry
+  timestamp: string;
+  errors: QAError[];
+  sourceFileName: string;
+  targetFileName: string;
+  metadata: any;
+  summary: {
+    totalIssues: number;
+    criticalCount: number;
+    majorCount: number;
+    minorCount: number;
+  };
+  workflowStatus: WorkflowStatus;
+  creator: {
+    id: string;
+    email: string;
+    name?: string;
+  };
+  reviewers: Array<{
+    id: string;
+    email: string;
+    name?: string;
+    role: UserRole;
+    invitedAt: string;
+    lastViewedAt?: string;
+    completedAt?: string;
+  }>;
+  viewers?: Array<{
+    id: string;
+    email: string;
+    name?: string;
+    viewedAt: string;
+  }>;
+  decisions?: Record<string, {
+    accepted: boolean;
+    rejected: boolean;
+    decidedBy: string;
+    decidedAt: string;
+    comment?: string;
+  }>;
 }

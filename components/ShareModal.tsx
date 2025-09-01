@@ -22,9 +22,11 @@ interface ShareModalProps {
   sourceFile?: File;
   targetFile?: File;
   metadata?: any;
+  historyEntryId?: string;
+  onShareSuccess?: (historyEntryId: string) => void;
 }
 
-export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors, sourceFile, targetFile, metadata }) => {
+export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors, sourceFile, targetFile, metadata, historyEntryId, onShareSuccess }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [shareLink, setShareLink] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -36,21 +38,61 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
     }
   }, [isOpen, errors]);
 
-  const generateShareableReport = async () => {
+    const generateShareableReport = async () => {
     try {
       setIsGenerating(true);
-      const creator = user ? {
+
+      // Validate inputs
+      if (!errors || errors.length === 0) {
+        throw new Error('No errors to share. Please run an analysis first.');
+      }
+
+      if (!user) {
+        throw new Error('You must be logged in to share reports.');
+      }
+
+      console.log('Generating shareable report with:', {
+        errorsCount: errors.length,
+        sourceFile: sourceFile?.name,
+        targetFile: targetFile?.name,
+        metadata,
+        user: { id: user.id, email: user.email },
+        historyEntryId
+      });
+
+      const creator = {
         id: user.id,
         email: user.email,
         name: user.user_metadata?.full_name || user.email
-      } : undefined;
-      
-      const link = await generateShareableLink(errors, sourceFile, targetFile, metadata, creator);
+      };
+
+      console.log('Creator object:', creator);
+
+      const link = await generateShareableLink(errors, sourceFile, targetFile, metadata, creator, historyEntryId);
+
+      if (!link) {
+        throw new Error('Failed to generate shareable link');
+      }
+
+      console.log('Generated link:', link);
       setShareLink(link);
+      
+      // Call the success callback to update history
+      if (onShareSuccess && historyEntryId) {
+        onShareSuccess(historyEntryId);
+      }
     } catch (error) {
       console.error('Failed to generate shareable link:', error);
-      // Fallback to current URL if generation fails
-      setShareLink(window.location.href);
+
+      // Show specific error messages
+      if (error instanceof Error) {
+        alert(`Failed to generate shareable link: ${error.message}`);
+      } else {
+        alert('Failed to generate shareable link. Please try again.');
+      }
+
+      // Don't set fallback URL as it might confuse users
+      setShareLink('');
     } finally {
       setIsGenerating(false);
     }
@@ -60,10 +102,43 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
     return null;
   }
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(shareLink);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+  const handleCopyLink = async () => {
+    if (!shareLink) {
+      alert('No shareable link available. Please generate the link first.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy link to clipboard:', error);
+
+      // Fallback for older browsers or when clipboard API fails
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = shareLink;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        if (document.execCommand('copy')) {
+          setIsCopied(true);
+          setTimeout(() => setIsCopied(false), 2000);
+        } else {
+          throw new Error('Fallback copy method failed');
+        }
+
+        document.body.removeChild(textArea);
+      } catch (fallbackError) {
+        console.error('Fallback copy method also failed:', fallbackError);
+        alert('Failed to copy link. Please manually copy the URL from the input field.');
+      }
+    }
   };
 
   const handleEmailShare = () => {

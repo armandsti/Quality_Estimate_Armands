@@ -15,16 +15,18 @@ interface ResultsPageProps {
   severityFilter: Severity[];
   onToggleSeverityFilter: (severity: Severity) => void;
   onExportReport: () => void;
-  onApplyCorrection: (errorId: number) => void;
-  onRejectCorrection: (errorId: number) => void;
-  onSuggestionEdit: (errorId: number, newSuggestion: string) => void;
-  onRevertCorrection: (errorId: number) => void;
+  onApplyCorrection: (errorId: string) => void;
+  onRejectCorrection: (errorId: string) => void;
+  onSuggestionEdit: (errorId: string, newSuggestion: string) => void;
+  onRevertCorrection: (errorId: string) => void;
   onDownloadCorrected: () => void;
   sourceFile: File | null;
   targetFile: File | null;
   categoryFilter: string;
   onCategoryFilterChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   uniqueCategories: string[];
+  historyEntryId?: string;
+  onShareSuccess?: (historyEntryId: string) => void;
 }
 
 export const ResultsPage: React.FC<ResultsPageProps> = ({
@@ -45,7 +47,9 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
   targetFile,
   categoryFilter,
   onCategoryFilterChange,
-  uniqueCategories
+  uniqueCategories,
+  historyEntryId,
+  onShareSuccess
 }) => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   
@@ -78,7 +82,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] bg-slate-50 rounded-b-xl">
                 <Loader />
-                <p className="mt-4 text-slate-600 font-semibold">AI is reviewing the documents...</p>
+                <p className="mt-4 text-slate-600 font-semibold">OpenAI GPT-4o-mini is analyzing the translation...</p>
                 <p className="text-sm text-slate-500">This may take a moment for large files.</p>
             </div>
         );
@@ -216,7 +220,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
 
         {renderContent()}
         
-        <ShareModal 
+        <ShareModal
             isOpen={isShareModalOpen}
             onClose={() => setIsShareModalOpen(false)}
             errors={allErrors}
@@ -227,6 +231,8 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
               timestamp: new Date().toISOString(),
               totalIssues: allErrors.length
             }}
+            historyEntryId={historyEntryId}
+            onShareSuccess={onShareSuccess}
         />
     </div>
   );
