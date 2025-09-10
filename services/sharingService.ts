@@ -53,7 +53,8 @@ export class SharingService {
         .eq('user_id', creator.id);
 
       if (historyUpdateError) {
-        console.warn('Failed to update history entry:', historyUpdateError);
+        console.error('Failed to update history entry:', historyUpdateError);
+        // Don't throw error here as the shared report was created successfully
       }
 
       // Generate the shareable URL
@@ -105,9 +106,11 @@ export class SharingService {
 
       // Check if user has access (creator or reviewer)
       if (userId) {
-        const hasAccess = 
-          historyData.user_id === userId || 
-          sharedReport.shared_report_reviewers?.some((r: any) => r.reviewer_id === userId);
+        const isCreator = historyData.user_id === userId;
+        const isReviewer = sharedReport.shared_report_reviewers?.some((r: any) => r.reviewer_id === userId);
+        const hasAccess = isCreator || isReviewer;
+        
+        console.log('Access check:', { userId, isCreator, isReviewer, hasAccess });
         
         if (!hasAccess) {
           console.error('User does not have access to this report');
@@ -136,7 +139,7 @@ export class SharingService {
       // Transform decisions
       const decisions: Record<string, any> = {};
       sharedReport.shared_report_decisions?.forEach((decision: any) => {
-        decisions[decision.error_id.toString()] = {
+        decisions[decision.error_id] = {
           accepted: decision.accepted,
           rejected: decision.rejected,
           decidedBy: decision.decided_by,
@@ -270,9 +273,14 @@ export class SharingService {
     }
   ): Promise<void> {
     try {
+      // Validate input parameters
+      if (!reportId || !errorId) {
+        throw new Error('Report ID and Error ID are required');
+      }
+
       const decisionData: Omit<DatabaseSharedReportDecision, 'id' | 'created_at' | 'updated_at'> = {
         shared_report_id: reportId,
-        error_id: parseInt(errorId),
+        error_id: errorId,
         accepted: decision.accepted,
         rejected: decision.rejected,
         decided_by: decision.decidedBy,
@@ -280,12 +288,15 @@ export class SharingService {
         comment: decision.comment
       };
 
+      console.log('Updating decision:', { reportId, errorId, decisionData });
+
       // Use upsert to update existing or create new decision
       const { error } = await supabase
         .from(TABLES.SHARED_REPORT_DECISIONS)
         .upsert([decisionData], { onConflict: 'shared_report_id,error_id' });
 
       if (error) {
+        console.error('Supabase error updating decision:', error);
         throw new Error(`Failed to update decision: ${error.message}`);
       }
 
@@ -354,6 +365,8 @@ export class SharingService {
     onReviewerChange: (reviewer: any) => void,
     onStatusChange: (status: WorkflowStatus) => void
   ) {
+    console.log('Setting up real-time subscriptions for report:', reportId);
+
     // Subscribe to decision changes
     const decisionsSubscription = supabase
       .channel(`shared_report_decisions:${reportId}`)
@@ -367,10 +380,16 @@ export class SharingService {
         },
         (payload) => {
           console.log('Decision change received:', payload);
-          onDecisionChange(payload.new || payload.old);
+          try {
+            onDecisionChange(payload.new || payload.old);
+          } catch (error) {
+            console.error('Error handling decision change:', error);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Decisions subscription status:', status);
+      });
 
     // Subscribe to reviewer changes
     const reviewersSubscription = supabase
@@ -385,10 +404,16 @@ export class SharingService {
         },
         (payload) => {
           console.log('Reviewer change received:', payload);
-          onReviewerChange(payload.new || payload.old);
+          try {
+            onReviewerChange(payload.new || payload.old);
+          } catch (error) {
+            console.error('Error handling reviewer change:', error);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Reviewers subscription status:', status);
+      });
 
     // Subscribe to report status changes
     const reportSubscription = supabase
@@ -403,15 +428,22 @@ export class SharingService {
         },
         (payload) => {
           console.log('Report status change received:', payload);
-          if (payload.new?.workflow_status) {
-            onStatusChange(payload.new.workflow_status);
+          try {
+            if (payload.new?.workflow_status) {
+              onStatusChange(payload.new.workflow_status);
+            }
+          } catch (error) {
+            console.error('Error handling status change:', error);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Report subscription status:', status);
+      });
 
     // Return cleanup function
     return () => {
+      console.log('Cleaning up real-time subscriptions for report:', reportId);
       supabase.removeChannel(decisionsSubscription);
       supabase.removeChannel(reviewersSubscription);
       supabase.removeChannel(reportSubscription);
@@ -495,7 +527,7 @@ export class SharingService {
 
     const decisions: Record<string, any> = {};
     report.shared_report_decisions?.forEach((decision: any) => {
-      decisions[decision.error_id.toString()] = {
+      decisions[decision.error_id] = {
         accepted: decision.accepted,
         rejected: decision.rejected,
         decidedBy: decision.decided_by,

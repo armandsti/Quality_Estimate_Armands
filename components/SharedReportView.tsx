@@ -36,60 +36,37 @@ export const SharedReportView: React.FC = () => {
     }
   }, [reportId, user, authLoading, navigate]);
 
-  // Sync decisions from URL data and localStorage, set up real-time synchronization
+  // Real-time synchronization of decisions
   useEffect(() => {
     if (report) {
-      const syncFromAllSources = () => {
-        // First, try to sync from URL data
-        const urlParams = new URLSearchParams(window.location.search);
-        const encodedData = urlParams.get('data');
-        
-        if (encodedData) {
-          try {
-            const decodedData = JSON.parse(decodeURIComponent(encodedData));
-            if (decodedData.decisions && Object.keys(decodedData.decisions).length > 0) {
-              setDecisions(decodedData.decisions);
-              console.log('Synced decisions from URL:', decodedData.decisions);
-            }
-          } catch (error) {
-            console.error('Failed to parse URL data:', error);
-          }
-        }
-
-        // Also check localStorage for updated reports with the same historyEntryId
+      // Set up polling for real-time updates (every 3 seconds for better performance)
+      const syncDecisions = async () => {
         try {
-          const storedReports = JSON.parse(localStorage.getItem('sharedReports') || '{}');
-          const relatedReports = Object.values(storedReports).filter((storedReport: any) => 
-            (storedReport as SharedReportData).historyEntryId === report.historyEntryId
-          ) as SharedReportData[];
-
-          if (relatedReports.length > 0) {
-            // Find the most up-to-date report (one with the most decisions)
-            const mostUpdatedReport = relatedReports.reduce((latest: SharedReportData, current: SharedReportData) => {
-              const latestDecisions = latest.decisions ? Object.keys(latest.decisions).length : 0;
-              const currentDecisions = current.decisions ? Object.keys(current.decisions).length : 0;
-              return currentDecisions > latestDecisions ? current : latest;
-            });
-
-            if (mostUpdatedReport.decisions && Object.keys(mostUpdatedReport.decisions).length > 0) {
-              setDecisions(mostUpdatedReport.decisions);
-              console.log('Synced decisions from localStorage:', mostUpdatedReport.decisions);
+          // Reload the report data to get latest decisions
+          if (user) {
+            const updatedReport = await getSharedReport(report.id, user.id);
+            if (updatedReport && updatedReport.decisions) {
+              setDecisions(updatedReport.decisions);
+              console.log('Synced latest decisions from database:', Object.keys(updatedReport.decisions).length);
             }
           }
         } catch (error) {
-          console.error('Failed to sync from localStorage:', error);
+          console.error('Failed to sync decisions:', error);
         }
       };
 
-      // Initial sync
-      syncFromAllSources();
+      // Initial sync after 1 second
+      const initialTimeout = setTimeout(syncDecisions, 1000);
+      
+      // Set up regular polling
+      const interval = setInterval(syncDecisions, 3000);
 
-      // Set up polling for real-time updates (every 2 seconds)
-      const interval = setInterval(syncFromAllSources, 2000);
-
-      return () => clearInterval(interval);
+      return () => {
+        clearTimeout(initialTimeout);
+        clearInterval(interval);
+      };
     }
-  }, [report]);
+  }, [report, user]);
 
   // Set up real-time subscriptions when report is loaded
   useEffect(() => {
@@ -227,7 +204,6 @@ export const SharedReportView: React.FC = () => {
 
     try {
       const decisionData = {
-        errorId: errorId.toString(),
         accepted: decision === 'accept',
         rejected: decision === 'reject',
         decidedBy: user.user_metadata?.full_name || user.email,
@@ -235,6 +211,7 @@ export const SharedReportView: React.FC = () => {
         comment: commentText.trim() || undefined
       };
 
+      // Update decision in database
       await updateReportDecisions(report.id, errorId, decisionData);
       
       // Track editor decision if user is not the creator
@@ -251,37 +228,6 @@ export const SharedReportView: React.FC = () => {
         ...prev,
         [errorId.toString()]: decisionData
       }));
-
-      // Update URL data for real-time synchronization across instances
-      const urlParams = new URLSearchParams(window.location.search);
-      const encodedData = urlParams.get('data');
-      
-      if (encodedData) {
-        try {
-          const decodedData = JSON.parse(decodeURIComponent(encodedData));
-          if (decodedData.id === report.id) {
-            // Update the decisions in the URL data
-            if (!decodedData.decisions) decodedData.decisions = {};
-            decodedData.decisions[errorId.toString()] = decisionData;
-            
-            // Update the errors array to reflect the decision
-            decodedData.errors = decodedData.errors.map((error: any) => 
-              error.id === errorId 
-                ? { ...error, resolved: decisionData.accepted, rejected: decisionData.rejected }
-                : error
-            );
-            
-            // Encode and update URL
-            const newEncodedData = encodeURIComponent(JSON.stringify(decodedData));
-            const newUrl = `${window.location.pathname}?data=${newEncodedData}`;
-            window.history.replaceState({}, '', newUrl);
-            
-            console.log(`Updated URL data for real-time sync: decision ${decision} for error ${errorId}`);
-          }
-        } catch (error) {
-          console.error('Failed to update URL data for sync:', error);
-        }
-      }
 
       // Clear comment input
       setCommentText('');
@@ -488,7 +434,6 @@ export const SharedReportView: React.FC = () => {
 
     try {
       const decisionData = {
-        errorId: errorId.toString(),
         accepted: false,
         rejected: false,
         decidedBy: user.user_metadata?.full_name || user.email,
@@ -503,37 +448,6 @@ export const SharedReportView: React.FC = () => {
         ...prev,
         [errorId.toString()]: decisionData
       }));
-
-      // Update URL data for real-time synchronization across instances
-      const urlParams = new URLSearchParams(window.location.search);
-      const encodedData = urlParams.get('data');
-      
-      if (encodedData) {
-        try {
-          const decodedData = JSON.parse(decodeURIComponent(encodedData));
-          if (decodedData.id === report.id) {
-            // Update the decisions in the URL data
-            if (!decodedData.decisions) decodedData.decisions = {};
-            decodedData.decisions[errorId.toString()] = decisionData;
-            
-            // Update the errors array to reflect the decision
-            decodedData.errors = decodedData.errors.map((error: any) => 
-              error.id === errorId 
-                ? { ...error, resolved: false, rejected: false }
-                : error
-            );
-            
-            // Encode and update URL
-            const newEncodedData = encodeURIComponent(JSON.stringify(decodedData));
-            const newUrl = `${window.location.pathname}?data=${newEncodedData}`;
-            window.history.replaceState({}, '', newUrl);
-            
-            console.log(`Updated URL data for real-time sync: reverted decision for error ${errorId}`);
-          }
-        } catch (error) {
-          console.error('Failed to update URL data for sync:', error);
-        }
-      }
 
       console.log(`Decision reverted for error ${errorId}`);
     } catch (error) {
@@ -647,6 +561,34 @@ export const SharedReportView: React.FC = () => {
               )}
             </div>
             <div className="flex items-center gap-4">
+              <button
+                onClick={() => {
+                  const { exportToCSV } = require('../services/reportService');
+                  exportToCSV(transformedErrors);
+                }}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition-colors"
+                title="Download CSV Report"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                CSV Report
+              </button>
+              {transformedErrors.some(e => e.resolved) && (
+                <button
+                  onClick={() => {
+                    const { exportToCorrectedBilingualFile } = require('../services/reportService');
+                    exportToCorrectedBilingualFile(transformedErrors.filter(e => e.resolved));
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                  title="Download corrected file with accepted suggestions"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Corrected File
+                </button>
+              )}
               {canComplete && (
                 <button
                   onClick={handleCompleteReport}

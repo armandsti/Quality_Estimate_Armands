@@ -146,7 +146,7 @@ export interface DatabaseSharedReportReviewer {
 export interface DatabaseSharedReportDecision {
   id: string;
   shared_report_id: string;
-  error_id: number;
+  error_id: string;
   accepted: boolean;
   rejected: boolean;
   decided_by: string;

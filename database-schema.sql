@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS public.shared_report_reviewers (
 CREATE TABLE IF NOT EXISTS public.shared_report_decisions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   shared_report_id UUID REFERENCES public.shared_reports(id) ON DELETE CASCADE NOT NULL,
-  error_id INTEGER NOT NULL,
+  error_id TEXT NOT NULL,
   accepted BOOLEAN NOT NULL,
   rejected BOOLEAN NOT NULL,
   decided_by TEXT NOT NULL,
