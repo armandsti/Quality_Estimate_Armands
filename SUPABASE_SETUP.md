@@ -36,6 +36,8 @@ Complete guide to set up Supabase for the QA Riks AI Translation Quality Assista
 5. Click "Run" to execute the schema
 6. Verify tables were created in **Database** → **Tables**
 
+**⚠️ Important Note**: If you get an error `ERROR: 42501: must be owner of table users`, this is normal. The `auth.users` table is managed by Supabase and already has the correct permissions. The rest of your schema should still be created successfully.
+
 Expected tables:
 - `profiles`
 - `analysis_history`
@@ -80,15 +82,44 @@ GEMINI_API_KEY=your-gemini-api-key-here
 4. Check **Authentication** → **Users** in Supabase to see new users
 5. Check **Database** → **Table Editor** to see data
 
-## 8. Production Deployment
+## 8. Vercel Deployment
 
-### For Vercel:
-1. Add environment variables in Vercel dashboard:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-   - `GEMINI_API_KEY`
-2. Update site URL in Supabase **Authentication** → **Settings**
-3. Add production domain to allowed origins
+### Step 1: Deploy to Vercel
+1. Push your code to GitHub (if not already done)
+2. Go to [vercel.com](https://vercel.com) and sign in
+3. Click "New Project" and import your GitHub repository
+4. Configure build settings (Vercel usually detects Vite automatically):
+   - **Framework Preset**: Vite
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+5. Click "Deploy"
+
+### Step 2: Add Environment Variables in Vercel
+1. Go to your project dashboard in Vercel
+2. Click **Settings** → **Environment Variables**
+3. Add these variables:
+   ```
+   VITE_SUPABASE_URL = https://your-project-id.supabase.co
+   VITE_SUPABASE_ANON_KEY = your-anon-key-here
+   GEMINI_API_KEY = your-gemini-api-key-here
+   ```
+4. Click "Save" for each variable
+5. Redeploy your app (Vercel will do this automatically)
+
+### Step 3: Update Supabase Settings
+1. Copy your Vercel deployment URL (e.g., `https://your-app.vercel.app`)
+2. In Supabase, go to **Authentication** → **Settings**
+3. Update **Site URL** to your Vercel URL
+4. Add your Vercel domain to **Redirect URLs**:
+   - `https://your-app.vercel.app/auth/callback`
+5. Save changes
+
+### Step 4: Test Production Deployment
+1. Visit your Vercel URL
+2. Test user registration/login
+3. Create a test analysis
+4. Try the sharing feature
+5. Check Supabase dashboard for new users/data
 
 ## 9. Security Checklist
 
@@ -133,6 +164,12 @@ GEMINI_API_KEY=your-gemini-api-key-here
 - Re-run the database schema SQL
 - Check if schema was applied to correct project
 - Verify table names match code expectations
+
+**"ERROR: 42501: must be owner of table users"**
+- This error is expected and can be ignored
+- The `auth.users` table is managed by Supabase
+- Check that your other tables were created successfully
+- The sharing feature should still work properly
 
 ## Support
 

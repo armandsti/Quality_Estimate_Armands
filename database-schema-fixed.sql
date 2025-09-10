@@ -1,8 +1,6 @@
--- Database schema for QA Analysis Tool
+-- Fixed Database schema for QA Analysis Tool
 -- Run this in your Supabase SQL editor
-
--- Note: auth.users table is managed by Supabase and already has RLS enabled
--- No need to modify auth.users table
+-- This version removes the problematic auth.users modification
 
 -- Create profiles table
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -145,11 +143,6 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
--- Migration: Add workflow_status and shared_report_id columns to analysis_history
-ALTER TABLE public.analysis_history
-ADD COLUMN IF NOT EXISTS workflow_status TEXT DEFAULT 'draft',
-ADD COLUMN IF NOT EXISTS shared_report_id TEXT;
 
 -- Create shared_reports table for better tracking of shared reports
 CREATE TABLE IF NOT EXISTS public.shared_reports (
@@ -319,8 +312,3 @@ GRANT ALL ON public.analysis_errors TO anon, authenticated;
 GRANT ALL ON public.shared_reports TO anon, authenticated;
 GRANT ALL ON public.shared_report_reviewers TO anon, authenticated;
 GRANT ALL ON public.shared_report_decisions TO anon, authenticated;
-GRANT USAGE ON SEQUENCE public.analysis_history_id_seq TO anon, authenticated;
-GRANT USAGE ON SEQUENCE public.analysis_errors_id_seq TO anon, authenticated;
-GRANT USAGE ON SEQUENCE public.shared_reports_id_seq TO anon, authenticated;
-GRANT USAGE ON SEQUENCE public.shared_report_reviewers_id_seq TO anon, authenticated;
-GRANT USAGE ON SEQUENCE public.shared_report_decisions_id_seq TO anon, authenticated;
