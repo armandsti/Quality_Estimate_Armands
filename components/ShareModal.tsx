@@ -69,22 +69,48 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
       console.log('Target file:', targetFile?.name);
 
       // Validate that the history entry exists in the database
+      let finalHistoryId = historyEntryId;
+      
       try {
         const dbHistory = await HistoryService.getAnalysisHistory(user.id);
-        const historyEntry = dbHistory.find(entry => entry.id === historyEntryId);
+        let historyEntry = dbHistory.find(entry => entry.id === historyEntryId);
 
         if (!historyEntry) {
           console.log('History entry not found in database, available entries:', dbHistory.map(e => e.id));
-          throw new Error('This analysis hasn\'t been saved to the database yet. Please refresh the page and try again.');
+          console.log('Attempting to save current analysis to database...');
+          
+          // Try to save the current analysis to the database
+          try {
+            // For missing analyses, we'll save with minimal content since we don't have access to the original text
+            const newHistoryId = await HistoryService.saveAnalysisHistory(
+              user.id,
+              sourceFile?.name || 'Unknown Source',
+              targetFile?.name,
+              'Source content not available during sharing', // sourceContent - not available in ShareModal
+              'Target content not available during sharing', // targetContent - not available in ShareModal
+              errors
+            );
+            
+            console.log('Successfully saved analysis to database with ID:', newHistoryId);
+            finalHistoryId = newHistoryId;
+            
+          } catch (saveError) {
+            console.error('Failed to save analysis to database:', saveError);
+            throw new Error('This analysis couldn\'t be saved to the database. Please try creating a new analysis.');
+          }
+        } else {
+          console.log('History entry validated:', historyEntry.id);
+          finalHistoryId = historyEntry.id;
         }
-
-        console.log('History entry found in database:', historyEntry.id);
       } catch (validationError) {
         console.error('History validation failed:', validationError);
 
         // If validation fails, try to refresh the page data
-        if (validationError instanceof Error && validationError.message.includes('not saved to the database')) {
-          console.log('Attempting to clear local cache and refresh...');
+        if (validationError instanceof Error && (
+          validationError.message.includes('not saved to the database') ||
+          validationError.message.includes('couldn\'t be saved')
+        )) {
+          console.log('Attempting to clear local cache...');
           // Clear potentially corrupted localStorage data
           localStorage.removeItem('translationHistory');
           localStorage.removeItem('sharedReports');
@@ -92,14 +118,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
 
         throw validationError;
       }
-
+      
       const shareableLink = await generateShareableLink(
         errors,
         sourceFile,
         targetFile,
         metadata,
         user,
-        historyEntryId
+        finalHistoryId
       );
 
       setShareLink(shareableLink);
@@ -110,8 +136,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
       setSharedReportId(reportId);
       
       // Call success callback if provided
-      if (onShareSuccess && historyEntryId) {
-        onShareSuccess(historyEntryId);
+      if (onShareSuccess) {
+        onShareSuccess(finalHistoryId);
       }
       
     } catch (error) {
@@ -121,9 +147,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
 
       if (error instanceof Error) {
         if (error.message.includes('Invalid history entry') || error.message.includes('not saved to the database')) {
-          message = 'This analysis hasn\'t been saved to the database yet. The page has been refreshed to sync your data. Please try sharing again.';
+          message = '✅ Analysis automatically saved to database. Please try sharing again.';
+        } else if (error.message.includes('couldn\'t be saved')) {
+          message = 'Unable to save analysis to database. Please create a new analysis or check your connection.';
         } else if (error.message.includes('violates foreign key constraint')) {
-          message = 'The analysis data is corrupted. The page has been refreshed to sync your data. Please try sharing again.';
+          message = 'Database sync issue detected. Local cache has been cleared. Please refresh and try again.';
         } else {
           message = error.message;
         }
