@@ -5,6 +5,7 @@ import { XCircleIcon, LinkIcon, EnvelopeIcon } from './Icons';
 import { useAuth } from '../contexts/AuthContext';
 import { generateShareableLink } from '../services/reportService';
 import { ReviewerManagement } from './ReviewerManagement';
+import { HistoryService } from '../services/historyService';
 
 // Icon component copied from Icons.tsx to be used locally, to avoid changing existing patterns.
 const Icon: React.FC<{ children: React.ReactNode; className?: string; }> = ({ children, className = "h-6 w-6" }) => (
@@ -53,13 +54,43 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
     const generateShareableReport = async () => {
     try {
       setIsGenerating(true);
-      
+
       if (!user) {
         throw new Error('User authentication required');
       }
 
       if (!historyEntryId) {
         throw new Error('History entry ID is required for sharing');
+      }
+
+      console.log('Attempting to share analysis with ID:', historyEntryId);
+      console.log('Current user ID:', user.id);
+      console.log('Source file:', sourceFile?.name);
+      console.log('Target file:', targetFile?.name);
+
+      // Validate that the history entry exists in the database
+      try {
+        const dbHistory = await HistoryService.getAnalysisHistory(user.id);
+        const historyEntry = dbHistory.find(entry => entry.id === historyEntryId);
+
+        if (!historyEntry) {
+          console.log('History entry not found in database, available entries:', dbHistory.map(e => e.id));
+          throw new Error('This analysis hasn\'t been saved to the database yet. Please refresh the page and try again.');
+        }
+
+        console.log('History entry found in database:', historyEntry.id);
+      } catch (validationError) {
+        console.error('History validation failed:', validationError);
+
+        // If validation fails, try to refresh the page data
+        if (validationError instanceof Error && validationError.message.includes('not saved to the database')) {
+          console.log('Attempting to clear local cache and refresh...');
+          // Clear potentially corrupted localStorage data
+          localStorage.removeItem('translationHistory');
+          localStorage.removeItem('sharedReports');
+        }
+
+        throw validationError;
       }
 
       const shareableLink = await generateShareableLink(
@@ -85,7 +116,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
       
     } catch (error) {
       console.error('Failed to generate shareable link:', error);
-      const message = error instanceof Error ? error.message : 'Failed to generate shareable link';
+
+      let message = 'Failed to generate shareable link';
+
+      if (error instanceof Error) {
+        if (error.message.includes('Invalid history entry') || error.message.includes('not saved to the database')) {
+          message = 'This analysis hasn\'t been saved to the database yet. The page has been refreshed to sync your data. Please try sharing again.';
+        } else if (error.message.includes('violates foreign key constraint')) {
+          message = 'The analysis data is corrupted. The page has been refreshed to sync your data. Please try sharing again.';
+        } else {
+          message = error.message;
+        }
+      }
+
       alert(`❌ ${message}`);
     } finally {
       setIsGenerating(false);

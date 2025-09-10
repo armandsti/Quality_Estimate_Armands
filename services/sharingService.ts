@@ -25,6 +25,25 @@ export class SharingService {
         throw new Error('User authentication required');
       }
 
+      if (!historyEntryId) {
+        throw new Error('History entry ID is required');
+      }
+
+      // Validate that the history entry exists and belongs to the user
+      const { data: historyEntry, error: historyCheckError } = await supabase
+        .from(TABLES.ANALYSIS_HISTORY)
+        .select('id, user_id')
+        .eq('id', historyEntryId)
+        .eq('user_id', creator.id)
+        .single();
+
+      if (historyCheckError || !historyEntry) {
+        console.error('History entry validation failed:', historyCheckError);
+        throw new Error(`Invalid history entry: The analysis must be saved to the database before it can be shared.`);
+      }
+
+      console.log('History entry validated:', historyEntry.id);
+
       // Create shared report record
       const sharedReportData: Omit<DatabaseSharedReport, 'id' | 'created_at' | 'updated_at'> = {
         history_entry_id: historyEntryId,
