@@ -26,12 +26,21 @@ export const SharedReportView: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('All');
 
   useEffect(() => {
+    console.log('SharedReportView useEffect:', {
+      reportId,
+      authLoading,
+      user: !!user,
+      currentUrl: window.location.href
+    });
+
     if (reportId && !authLoading) {
       if (!user) {
+        console.log('User not authenticated, redirecting to login');
         // Redirect to login if not authenticated
         navigate(`/auth?redirect=/shared-report/${reportId}`);
         return;
       }
+      console.log('Loading report with ID:', reportId);
       loadReport(reportId);
     }
   }, [reportId, user, authLoading, navigate]);
@@ -126,6 +135,8 @@ export const SharedReportView: React.FC = () => {
 
   const loadReport = async (id: string) => {
     try {
+      console.log('loadReport called with ID:', id);
+      
       if (!id) {
         throw new Error('Report ID is missing');
       }
@@ -134,6 +145,7 @@ export const SharedReportView: React.FC = () => {
         throw new Error('User authentication is required');
       }
 
+      console.log('Fetching shared report data for:', { reportId: id, userId: user.id });
       const reportData = await getSharedReport(id, user.id);
 
       if (!reportData) {

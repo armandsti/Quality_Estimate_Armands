@@ -128,11 +128,25 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
         finalHistoryId
       );
 
+      console.log('Received shareable link:', shareableLink);
+      
+      // Validate the URL format
+      if (!shareableLink || !shareableLink.includes('/shared-report/')) {
+        throw new Error('Invalid shareable URL format received');
+      }
+      
       setShareLink(shareableLink);
       
       // Extract shared report ID from the URL
       const urlParts = shareableLink.split('/');
       const reportId = urlParts[urlParts.length - 1];
+      
+      console.log('Extracted report ID from URL:', reportId);
+      
+      if (!reportId || reportId.length === 0) {
+        throw new Error('Could not extract report ID from URL');
+      }
+      
       setSharedReportId(reportId);
       
       // Call success callback if provided
@@ -173,10 +187,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
       return;
     }
 
+    console.log('Copying link to clipboard:', shareLink);
+
     try {
       await navigator.clipboard.writeText(shareLink);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
+      
+      // Optional: Test the link by opening it in a new tab for debugging
+      console.log('Link copied successfully. You can test it by opening:', shareLink);
     } catch (error) {
       console.error('Failed to copy link to clipboard:', error);
 
@@ -263,6 +282,16 @@ ${metadata?.userName || 'QA Team'}
               >
                 {isCopied ? 'Copied!' : 'Copy'}
               </button>
+              {shareLink && (
+                <button
+                  onClick={() => window.open(shareLink, '_blank')}
+                  disabled={isGenerating}
+                  className="px-3 py-2 text-sm font-semibold rounded-lg text-slate-700 bg-slate-200 hover:bg-slate-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Test the shared link"
+                >
+                  🔗
+                </button>
+              )}
             </div>
             {shareLink && (
               <p className="text-xs text-slate-500 mt-2">

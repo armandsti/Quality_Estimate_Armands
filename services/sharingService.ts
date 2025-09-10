@@ -51,11 +51,15 @@ export class SharingService {
         workflow_status: WorkflowStatus.Shared
       };
 
+      console.log('Creating shared report with data:', sharedReportData);
+
       const { data: sharedReport, error: reportError } = await supabase
         .from(TABLES.SHARED_REPORTS)
         .insert([sharedReportData])
         .select()
         .single();
+
+      console.log('Shared report creation result:', { sharedReport, reportError });
 
       if (reportError) {
         throw new Error(`Failed to create shared report: ${reportError.message}`);
@@ -79,6 +83,18 @@ export class SharingService {
       // Generate the shareable URL
       const baseUrl = window.location.origin;
       const shareUrl = `${baseUrl}/shared-report/${sharedReport.id}`;
+
+      console.log('URL Generation Details:', {
+        baseUrl,
+        reportId: sharedReport.id,
+        fullUrl: shareUrl,
+        windowLocation: window.location.href
+      });
+
+      // Validate the URL format
+      if (!shareUrl.includes('/shared-report/') || !sharedReport.id) {
+        throw new Error(`Invalid URL generated: ${shareUrl}`);
+      }
 
       console.log('Generated shareable link:', shareUrl);
       return shareUrl;
