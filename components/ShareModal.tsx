@@ -43,9 +43,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
 
   useEffect(() => {
     if (isOpen && errors.length > 0) {
-      generateShareableReport();
+      // Only generate if we don't already have a link and we're not generating
+      if (!shareLink && !isGenerating) {
+        generateShareableReport();
+      }
     }
-  }, [isOpen, errors]);
+  }, [isOpen, errors, shareLink, isGenerating]);
 
     const generateShareableReport = async () => {
     try {

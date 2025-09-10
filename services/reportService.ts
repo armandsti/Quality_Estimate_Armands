@@ -34,6 +34,7 @@ export const exportToCSV = (errors: QAError[]) => {
       error.errorType,
       `"${error.sourceSegment.replace(/"/g, '""')}"`,
       `"${error.targetSegment.replace(/"/g, '""')}"`,
+      `"${error.suggestedCorrection.replace(/"/g, '""')}"`,
       `"${error.description.replace(/"/g, '""')}"`
     ])
   ].map(row => row.join(',')).join('\n');

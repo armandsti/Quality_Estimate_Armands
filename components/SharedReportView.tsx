@@ -36,18 +36,23 @@ export const SharedReportView: React.FC = () => {
     }
   }, [reportId, user, authLoading, navigate]);
 
-  // Real-time synchronization of decisions
+  // Real-time synchronization of decisions - use polling as backup to real-time subscriptions
   useEffect(() => {
     if (report) {
-      // Set up polling for real-time updates (every 3 seconds for better performance)
+      // Set up polling for real-time updates (every 10 seconds as backup)
       const syncDecisions = async () => {
         try {
           // Reload the report data to get latest decisions
           if (user) {
             const updatedReport = await getSharedReport(report.id, user.id);
             if (updatedReport && updatedReport.decisions) {
-              setDecisions(updatedReport.decisions);
-              console.log('Synced latest decisions from database:', Object.keys(updatedReport.decisions).length);
+              // Only update if there are actual changes to avoid unnecessary re-renders
+              const currentDecisionKeys = Object.keys(decisions).sort().join(',');
+              const newDecisionKeys = Object.keys(updatedReport.decisions).sort().join(',');
+              if (currentDecisionKeys !== newDecisionKeys) {
+                setDecisions(updatedReport.decisions);
+                console.log('Synced latest decisions from database:', Object.keys(updatedReport.decisions).length);
+              }
             }
           }
         } catch (error) {
@@ -55,63 +60,69 @@ export const SharedReportView: React.FC = () => {
         }
       };
 
-      // Initial sync after 1 second
-      const initialTimeout = setTimeout(syncDecisions, 1000);
-      
-      // Set up regular polling
-      const interval = setInterval(syncDecisions, 3000);
+      // Initial sync after 2 seconds
+      const initialTimeout = setTimeout(syncDecisions, 2000);
+
+      // Set up regular polling (less frequent)
+      const interval = setInterval(syncDecisions, 10000);
 
       return () => {
         clearTimeout(initialTimeout);
         clearInterval(interval);
       };
     }
-  }, [report, user]);
+  }, [report, user, decisions]);
 
   // Set up real-time subscriptions when report is loaded
   useEffect(() => {
     if (report && user) {
+      console.log('Setting up real-time subscriptions for report:', report.id);
+
       const unsubscribe = SharingService.subscribeToReportChanges(
         report.id,
         (decision) => {
           // Handle decision changes
-          setDecisions(prev => ({
-            ...prev,
-            [decision.error_id.toString()]: {
-              accepted: decision.accepted,
-              rejected: decision.rejected,
-              decidedBy: decision.decided_by,
-              decidedAt: decision.decided_at,
-              comment: decision.comment
-            }
-          }));
           console.log('Real-time decision update received:', decision);
+          if (decision && decision.error_id) {
+            setDecisions(prev => ({
+              ...prev,
+              [decision.error_id.toString()]: {
+                accepted: decision.accepted,
+                rejected: decision.rejected,
+                decidedBy: decision.decided_by,
+                decidedAt: decision.decided_at,
+                comment: decision.comment
+              }
+            }));
+          }
         },
         (reviewer) => {
           // Handle reviewer changes
-          setReport(prev => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              reviewers: prev.reviewers.map(r => 
-                r.id === reviewer.reviewer_id 
-                  ? { ...r, lastViewedAt: reviewer.last_viewed_at, completedAt: reviewer.completed_at }
-                  : r
-              )
-            };
-          });
           console.log('Real-time reviewer update received:', reviewer);
+          if (reviewer && reviewer.reviewer_id) {
+            setReport(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                reviewers: prev.reviewers?.map(r =>
+                  r.id === reviewer.reviewer_id
+                    ? { ...r, lastViewedAt: reviewer.last_viewed_at, completedAt: reviewer.completed_at }
+                    : r
+                ) || []
+              };
+            });
+          }
         },
         (status) => {
           // Handle status changes
-          setReport(prev => prev ? { ...prev, workflowStatus: status } : prev);
           console.log('Real-time status update received:', status);
+          setReport(prev => prev ? { ...prev, workflowStatus: status } : prev);
         }
       );
 
       return unsubscribe;
     }
-  }, [report, user]);
+  }, [report?.id, user?.id]);
 
   const loadReport = async (id: string) => {
     try {
@@ -578,7 +589,10 @@ export const SharedReportView: React.FC = () => {
                 <button
                   onClick={() => {
                     const { exportToCorrectedBilingualFile } = require('../services/reportService');
-                    exportToCorrectedBilingualFile(transformedErrors.filter(e => e.resolved));
+                    // Create mock files for the shared report
+                    const sourceFile = new File([], report?.sourceFileName || 'source.txt', { type: 'text/plain' });
+                    const targetFile = new File([], report?.targetFileName || 'target.txt', { type: 'text/plain' });
+                    exportToCorrectedBilingualFile(transformedErrors.filter(e => e.resolved), sourceFile, targetFile);
                   }}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                   title="Download corrected file with accepted suggestions"

@@ -290,10 +290,34 @@ export class SharingService {
 
       console.log('Updating decision:', { reportId, errorId, decisionData });
 
-      // Use upsert to update existing or create new decision
-      const { error } = await supabase
+      // First try to update existing decision
+      const { data: existingDecision, error: selectError } = await supabase
         .from(TABLES.SHARED_REPORT_DECISIONS)
-        .upsert([decisionData], { onConflict: 'shared_report_id,error_id' });
+        .select('id')
+        .eq('shared_report_id', reportId)
+        .eq('error_id', errorId)
+        .single();
+
+      let error;
+      if (existingDecision) {
+        // Update existing decision
+        const { error: updateError } = await supabase
+          .from(TABLES.SHARED_REPORT_DECISIONS)
+          .update(decisionData)
+          .eq('shared_report_id', reportId)
+          .eq('error_id', errorId);
+
+        error = updateError;
+        console.log('Updated existing decision for error:', errorId);
+      } else {
+        // Insert new decision
+        const { error: insertError } = await supabase
+          .from(TABLES.SHARED_REPORT_DECISIONS)
+          .insert([decisionData]);
+
+        error = insertError;
+        console.log('Inserted new decision for error:', errorId);
+      }
 
       if (error) {
         console.error('Supabase error updating decision:', error);
