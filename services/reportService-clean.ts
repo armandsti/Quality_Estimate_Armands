@@ -125,7 +125,9 @@ function generateReportId(): string {
   return crypto.randomUUID();
 }
 
-// Generate a shareable link for a QA report using Supabase
+// SHARING FEATURE DISABLED - All sharing functions preserved but disabled
+
+// Generate a shareable link for a QA report
 export async function generateShareableLink(
   errors: QAError[],
   sourceFile?: File,
@@ -134,25 +136,16 @@ export async function generateShareableLink(
   creator?: any,
   historyEntryId?: string
 ): Promise<string> {
-  if (!historyEntryId || !creator) {
-    throw new Error('History entry ID and creator information are required');
-  }
-
-  const { SharingService } = await import('./sharingService');
-  return await SharingService.generateShareableLink(
-    historyEntryId,
-    errors,
-    sourceFile?.name || 'Unknown Source',
-    targetFile?.name,
-    metadata,
-    creator
-  );
+  // SHARING FEATURE DISABLED - Return error instead of processing
+  console.log('generateShareableLink called but feature is disabled');
+  throw new Error('Sharing feature is temporarily disabled for maintenance');
 }
 
 // Get shared report data
-export async function getSharedReport(reportId: string, userId?: string): Promise<SharedReportData | null> {
-  const { SharingService } = await import('./sharingService');
-  return await SharingService.getSharedReport(reportId, userId);
+export function getSharedReport(reportId: string, userId?: string): SharedReportData | null {
+  // SHARING FEATURE DISABLED - Return null instead of processing
+  console.log('getSharedReport called but feature is disabled');
+  return null;
 }
 
 // Update report viewers
@@ -162,12 +155,9 @@ export async function updateReportViewers(reportId: string, viewer: {
   name?: string;
   viewedAt: string;
 }): Promise<void> {
-  const { SharingService } = await import('./sharingService');
-  return await SharingService.updateReportViewer(reportId, {
-    id: viewer.id,
-    email: viewer.email,
-    name: viewer.name
-  });
+  // SHARING FEATURE DISABLED - Function disabled
+  console.log('updateReportViewers called but feature is disabled');
+  return;
 }
 
 // Update report decisions
@@ -178,32 +168,23 @@ export async function updateReportDecisions(reportId: string, errorId: string, d
   decidedAt: string;
   comment?: string;
 }): Promise<void> {
-  const { SharingService } = await import('./sharingService');
-  return await SharingService.updateReportDecision(reportId, errorId, decision);
+  // SHARING FEATURE DISABLED - Function disabled
+  console.log('updateReportDecisions called but feature is disabled');
+  return;
 }
 
 // Sync creator decisions to shared reports
 export async function syncCreatorDecisionsToSharedReport(historyEntryId: string, errorId: string, resolved: boolean, rejected: boolean): Promise<void> {
-  try {
-    // Find shared reports for this history entry
-    const { SharingService } = await import('./sharingService');
-    // This is now handled automatically by the database structure
-    console.log('Creator decision synced to shared reports for history entry:', historyEntryId);
-  } catch (error) {
-    console.error('Failed to sync creator decisions:', error);
-  }
+  // SHARING FEATURE DISABLED - Function disabled
+  console.log('syncCreatorDecisionsToSharedReport called but feature is disabled');
+  return;
 }
 
 // Sync shared decisions back to creator's view
 export async function syncSharedDecisionsToCreator(historyEntryId: string): Promise<Record<string, any>> {
-  try {
-    // This is now handled by the real-time subscriptions
-    console.log('Shared decisions synced for history entry:', historyEntryId);
-    return {};
-  } catch (error) {
-    console.error('Failed to sync shared decisions:', error);
-    return {};
-  }
+  // SHARING FEATURE DISABLED - Return empty decisions
+  console.log('syncSharedDecisionsToCreator called but feature is disabled');
+  return {};
 }
 
 // Track editor decisions
@@ -218,54 +199,42 @@ export async function trackEditorDecision(reportId: string, errorId: string, dec
   email: string;
   name?: string;
 }): Promise<void> {
-  const { SharingService } = await import('./sharingService');
-  return await SharingService.updateReportDecision(reportId, errorId, decision);
+  // SHARING FEATURE DISABLED - Function disabled
+  console.log('trackEditorDecision called but feature is disabled');
+  return;
 }
 
 // Sync changes back to original report
 export async function syncChangesToOriginalReport(currentReportId: string, updatedReport: SharedReportData): Promise<void> {
-  try {
-    // This is now handled automatically by the database structure and real-time subscriptions
-    console.log('Changes synced to original report:', currentReportId);
-  } catch (error) {
-    console.error('Failed to sync changes to original report:', error);
-  }
+  // SHARING FEATURE DISABLED - Function disabled
+  console.log('syncChangesToOriginalReport called but feature is disabled');
+  return;
 }
 
 // Update report workflow status
 export async function updateReportWorkflowStatus(reportId: string, status: WorkflowStatus): Promise<void> {
-  try {
-    // This is handled by the SharingService
-    console.log('Workflow status updated for report:', reportId, status);
-  } catch (error) {
-    console.error('Failed to update workflow status:', error);
-  }
+  // SHARING FEATURE DISABLED - Function disabled
+  console.log('updateReportWorkflowStatus called but feature is disabled');
+  return;
 }
 
 // Mark report as completed
 export async function markReportCompleted(reportId: string, userId: string): Promise<void> {
-  const { SharingService } = await import('./sharingService');
-  return await SharingService.markReportCompleted(reportId, userId);
+  // SHARING FEATURE DISABLED - Function disabled
+  console.log('markReportCompleted called but feature is disabled');
+  return;
 }
 
 // Get user reports
-export async function getUserReports(userId: string): Promise<SharedReportData[]> {
-  const { SharingService } = await import('./sharingService');
-  return await SharingService.getUserSharedReports(userId);
+export function getUserReports(userId: string): SharedReportData[] {
+  // SHARING FEATURE DISABLED - Return empty array
+  console.log('getUserReports called but feature is disabled');
+  return [];
 }
 
-// Get all shared reports (legacy function, now returns user-specific reports)
-export async function getAllSharedReports(userId?: string): Promise<Record<string, any>> {
-  if (!userId) return {};
-  
-  const { SharingService } = await import('./sharingService');
-  const reports = await SharingService.getUserSharedReports(userId);
-  
-  // Convert to legacy format for compatibility
-  const reportsMap: Record<string, any> = {};
-  reports.forEach(report => {
-    reportsMap[report.id] = report;
-  });
-  
-  return reportsMap;
+// Get all shared reports
+export function getAllSharedReports(): Record<string, any> {
+  // SHARING FEATURE DISABLED - Return empty object
+  console.log('getAllSharedReports called but feature is disabled');
+  return {};
 }

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getSharedReport, updateReportViewers, updateReportDecisions, markReportCompleted, trackEditorDecision, syncChangesToOriginalReport } from '../services/reportService';
+import { SharingService } from '../services/sharingService';
 import { QAError, SharedReportData, UserRole, WorkflowStatus, Severity } from '../types';
 import { QAIssuesIcon, AcceptIcon, RejectIcon, CheckCircleIcon, ChevronDownIcon } from './Icons';
 import { ResultsList } from './ResultsTable';
@@ -10,6 +11,9 @@ export const SharedReportView: React.FC = () => {
   const { reportId } = useParams<{ reportId: string }>();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  
+  // Sharing feature is now enabled
+  const isFeatureDisabled = false;
   const [report, setReport] = useState<SharedReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +91,51 @@ export const SharedReportView: React.FC = () => {
     }
   }, [report]);
 
+  // Set up real-time subscriptions when report is loaded
+  useEffect(() => {
+    if (report && user) {
+      const unsubscribe = SharingService.subscribeToReportChanges(
+        report.id,
+        (decision) => {
+          // Handle decision changes
+          setDecisions(prev => ({
+            ...prev,
+            [decision.error_id.toString()]: {
+              accepted: decision.accepted,
+              rejected: decision.rejected,
+              decidedBy: decision.decided_by,
+              decidedAt: decision.decided_at,
+              comment: decision.comment
+            }
+          }));
+          console.log('Real-time decision update received:', decision);
+        },
+        (reviewer) => {
+          // Handle reviewer changes
+          setReport(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              reviewers: prev.reviewers.map(r => 
+                r.id === reviewer.reviewer_id 
+                  ? { ...r, lastViewedAt: reviewer.last_viewed_at, completedAt: reviewer.completed_at }
+                  : r
+              )
+            };
+          });
+          console.log('Real-time reviewer update received:', reviewer);
+        },
+        (status) => {
+          // Handle status changes
+          setReport(prev => prev ? { ...prev, workflowStatus: status } : prev);
+          console.log('Real-time status update received:', status);
+        }
+      );
+
+      return unsubscribe;
+    }
+  }, [report, user]);
+
   const loadReport = async (id: string) => {
     try {
       if (!id) {
@@ -97,7 +146,7 @@ export const SharedReportView: React.FC = () => {
         throw new Error('User authentication is required');
       }
 
-      const reportData = getSharedReport(id, user.id);
+      const reportData = await getSharedReport(id, user.id);
 
       if (!reportData) {
         setError('Report not found, has expired, or you do not have access to it. Please check the link or contact the report creator.');
@@ -492,6 +541,28 @@ export const SharedReportView: React.FC = () => {
       alert('Failed to revert your decision. Please try again.');
     }
   };
+
+  // SHARING FEATURE DISABLED - Show disabled message instead of normal functionality
+  if (isFeatureDisabled) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="text-orange-500 text-6xl mb-4">🚧</div>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">Feature Under Maintenance</h1>
+          <p className="text-slate-600 mb-6">
+            The sharing feature is temporarily disabled while we implement improvements. 
+            Please check back soon!
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            Go to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (authLoading) {
     return (

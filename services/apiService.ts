@@ -168,23 +168,23 @@ class ApiService {
     });
   }
 
-  // Sharing API methods
+  // Sharing API methods - DISABLED
   async shareReport(request: ShareRequest): Promise<ShareResponse> {
-    return this.request<ShareResponse>('/api/share', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+    // SHARING FEATURE DISABLED
+    console.log('shareReport API called but feature is disabled');
+    throw new Error('Sharing feature is temporarily disabled for maintenance');
   }
 
   async getSharedReport(reportId: string): Promise<QAError[]> {
-    return this.request<QAError[]>(`/api/share/${reportId}`);
+    // SHARING FEATURE DISABLED
+    console.log('getSharedReport API called but feature is disabled');
+    throw new Error('Sharing feature is temporarily disabled for maintenance');
   }
 
   async updateSharedReport(reportId: string, updates: any): Promise<void> {
-    return this.request<void>(`/api/share/${reportId}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
+    // SHARING FEATURE DISABLED
+    console.log('updateSharedReport API called but feature is disabled');
+    throw new Error('Sharing feature is temporarily disabled for maintenance');
   }
 
   // Error management API methods

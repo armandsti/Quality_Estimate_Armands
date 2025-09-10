@@ -195,7 +195,6 @@ export class HistoryService {
         .from(TABLES.ANALYSIS_HISTORY)
         .update({
           shared_report_id: sharedReportId,
-          workflow_status: 'shared' as WorkflowStatus,
           updated_at: new Date().toISOString()
         })
         .eq('id', historyId)

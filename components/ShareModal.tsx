@@ -4,6 +4,7 @@ import { QAError, Severity } from '../types';
 import { XCircleIcon, LinkIcon, EnvelopeIcon } from './Icons';
 import { useAuth } from '../contexts/AuthContext';
 import { generateShareableLink } from '../services/reportService';
+import { ReviewerManagement } from './ReviewerManagement';
 
 // Icon component copied from Icons.tsx to be used locally, to avoid changing existing patterns.
 const Icon: React.FC<{ children: React.ReactNode; className?: string; }> = ({ children, className = "h-6 w-6" }) => (
@@ -26,10 +27,18 @@ interface ShareModalProps {
   onShareSuccess?: (historyEntryId: string) => void;
 }
 
+interface ShareModalState {
+  shareLink: string;
+  isGenerating: boolean;
+  isCopied: boolean;
+  sharedReportId: string | null;
+}
+
 export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors, sourceFile, targetFile, metadata, historyEntryId, onShareSuccess }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [shareLink, setShareLink] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [sharedReportId, setSharedReportId] = useState<string | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -41,58 +50,40 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, errors,
     const generateShareableReport = async () => {
     try {
       setIsGenerating(true);
-
-      // Validate inputs
-      if (!errors || errors.length === 0) {
-        throw new Error('No errors to share. Please run an analysis first.');
-      }
-
-      if (!user) {
-        throw new Error('You must be logged in to share reports.');
-      }
-
-      console.log('Generating shareable report with:', {
-        errorsCount: errors.length,
-        sourceFile: sourceFile?.name,
-        targetFile: targetFile?.name,
-        metadata,
-        user: { id: user.id, email: user.email },
-        historyEntryId
-      });
-
-      const creator = {
-        id: user.id,
-        email: user.email,
-        name: user.user_metadata?.full_name || user.email
-      };
-
-      console.log('Creator object:', creator);
-
-      const link = await generateShareableLink(errors, sourceFile, targetFile, metadata, creator, historyEntryId);
-
-      if (!link) {
-        throw new Error('Failed to generate shareable link');
-      }
-
-      console.log('Generated link:', link);
-      setShareLink(link);
       
-      // Call the success callback to update history
+      if (!user) {
+        throw new Error('User authentication required');
+      }
+
+      if (!historyEntryId) {
+        throw new Error('History entry ID is required for sharing');
+      }
+
+      const shareableLink = await generateShareableLink(
+        errors,
+        sourceFile,
+        targetFile,
+        metadata,
+        user,
+        historyEntryId
+      );
+
+      setShareLink(shareableLink);
+      
+      // Extract shared report ID from the URL
+      const urlParts = shareableLink.split('/');
+      const reportId = urlParts[urlParts.length - 1];
+      setSharedReportId(reportId);
+      
+      // Call success callback if provided
       if (onShareSuccess && historyEntryId) {
         onShareSuccess(historyEntryId);
       }
+      
     } catch (error) {
       console.error('Failed to generate shareable link:', error);
-
-      // Show specific error messages
-      if (error instanceof Error) {
-        alert(`Failed to generate shareable link: ${error.message}`);
-      } else {
-        alert('Failed to generate shareable link. Please try again.');
-      }
-
-      // Don't set fallback URL as it might confuse users
-      setShareLink('');
+      const message = error instanceof Error ? error.message : 'Failed to generate shareable link';
+      alert(`❌ ${message}`);
     } finally {
       setIsGenerating(false);
     }
@@ -219,6 +210,18 @@ ${metadata?.userName || 'QA Team'}
               Opens your default email client with a pre-filled message including the shareable link.
             </p>
           </div>
+          
+          {/* Reviewer Management */}
+          {sharedReportId && (
+            <div className="border-t border-slate-200 pt-6">
+              <ReviewerManagement 
+                reportId={sharedReportId}
+                onReviewerAdded={() => {
+                  console.log('Reviewer added successfully');
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
